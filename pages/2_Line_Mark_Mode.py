@@ -1,3 +1,4 @@
+import base64
 import io
 import importlib
 
@@ -8,10 +9,17 @@ from PIL import Image
 from streamlit_drawable_canvas import st_canvas
 
 from border_measurement import calculate_ratios_from_bounds
+from pages import line_mark_state as line_mark_state
 from pages import line_mark_utils as line_utils
 
+line_mark_state = importlib.reload(line_mark_state)
 line_utils = importlib.reload(line_utils)
 line_utils.apply_streamlit_canvas_compatibility()
+
+initialize_line_mark_defaults = line_mark_state.initialize_line_mark_defaults
+persistent_float_input = line_mark_state.persistent_float_input
+persistent_int_input = line_mark_state.persistent_int_input
+reset_line_controls = getattr(line_mark_state, "reset_line_controls", lambda: None)
 
 
 st.set_page_config(page_title="Line Mark Mode", layout="wide")
@@ -22,48 +30,23 @@ st.markdown(
     <style>
     canvas.upper-canvas { cursor: crosshair !important; }
     div[data-testid="stImage"] img { max-height: 70vh; object-fit: contain; }
+    /* Keep drawable-canvas toolbar icons visible in dark themes */
+    iframe[srcdoc] svg,
+    iframe[srcdoc] button svg,
+    iframe[srcdoc] [class*="toolbar"] svg {
+      stroke: #f3f4f6 !important;
+      fill: #f3f4f6 !important;
+    }
+    iframe[srcdoc] button {
+      color: #f3f4f6 !important;
+    }
+    input[aria-label="line_hover_xy_bridge"] { display: none !important; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-if "line_mark_canvas_nonce" not in st.session_state:
-    st.session_state["line_mark_canvas_nonce"] = 0
-
-_persistent_defaults = {
-    "line_top_y": 0,
-    "line_right_x": 0,
-    "line_bottom_y": 0,
-    "line_left_x": 0,
-    "line_top_angle": 0.0,
-    "line_right_angle": 0.0,
-    "line_bottom_angle": 0.0,
-    "line_left_angle": 0.0,
-    "line_inner_top": 0,
-    "line_inner_right": 0,
-    "line_inner_bottom": 0,
-    "line_inner_left": 0,
-    "line_inner_zoom_mode": "full",
-    "line_outer_zoom_mode": "full",
-}
-for _key, _default_value in _persistent_defaults.items():
-    st.session_state.setdefault(_key, _default_value)
-
-
-def _persistent_int_input(label: str, state_key: str, widget_key: str, step: int = 1) -> int:
-    if widget_key not in st.session_state:
-        st.session_state[widget_key] = int(st.session_state.get(state_key, 0))
-    value = int(st.number_input(label, step=step, key=widget_key))
-    st.session_state[state_key] = value
-    return value
-
-
-def _persistent_float_input(label: str, state_key: str, widget_key: str, step: float = 0.1) -> float:
-    if widget_key not in st.session_state:
-        st.session_state[widget_key] = float(st.session_state.get(state_key, 0.0))
-    value = float(st.number_input(label, step=step, key=widget_key))
-    st.session_state[state_key] = value
-    return value
+initialize_line_mark_defaults()
 
 uploaded_file = st.file_uploader("Upload card image", type=["png", "jpg", "jpeg", "webp"], key="line_mark_upload")
 if uploaded_file is None:
@@ -80,38 +63,58 @@ image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
 pil_image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
 canvas_width, canvas_height, canvas_scale = line_utils.fit_size(pil_image.width, pil_image.height)
 canvas_image = pil_image.resize((canvas_width, canvas_height), Image.Resampling.LANCZOS)
+canvas_points = st.session_state.get("line_mark_canvas_points", [])
+canvas_preview = line_utils.draw_cross_markers(np.array(canvas_image), canvas_points) if canvas_points else np.array(canvas_image)
+canvas_background = Image.fromarray(canvas_preview)
+zoom_buffer = io.BytesIO()
+canvas_background.save(zoom_buffer, format="PNG")
+zoom_source_url = f"data:image/png;base64,{base64.b64encode(zoom_buffer.getvalue()).decode('ascii')}"
 
 left_col, right_col = st.columns([3, 2])
 with right_col:
     if st.button("Clear marked points"):
+        reset_line_controls()
         st.session_state.pop("line_mark_locked_points", None)
         st.session_state.pop("line_mark_stage", None)
         st.session_state.pop("line_mark_adjusted_points", None)
+        st.session_state.pop("line_mark_canvas_points", None)
         st.session_state["line_mark_canvas_nonce"] += 1
         st.rerun()
+    st.text_input(
+        "line_hover_xy_bridge",
+        key="line_hover_xy_bridge_widget",
+    )
 
 locked_points = st.session_state.get("line_mark_locked_points")
 if locked_points is None:
     with left_col:
-        line_utils.force_canvas_crosshair()
+        line_utils.force_canvas_crosshair(
+            hover_bridge_label="line_hover_xy_bridge",
+            source_image_url=zoom_source_url,
+        )
         canvas_result = st_canvas(
             fill_color="rgba(0, 0, 0, 0)",
-            stroke_width=2,
+            stroke_width=1,
             stroke_color="#00FFFF",
-            background_image=canvas_image,
+            background_image=canvas_background,
             update_streamlit=True,
             drawing_mode="point",
-            point_display_radius=4,
+            point_display_radius=0,
             height=canvas_height,
             width=canvas_width,
             key=f"line_mark_canvas_{st.session_state['line_mark_canvas_nonce']}",
         )
 
     points = line_utils.point_list_from_canvas(canvas_result.json_data)
+    previous_points = st.session_state.get("line_mark_canvas_points", [])
+    st.session_state["line_mark_canvas_points"] = points
+    if points != previous_points:
+        st.rerun()
     if canvas_scale < 1.0:
         points = [(x_value / canvas_scale, y_value / canvas_scale) for x_value, y_value in points]
     with right_col:
         st.write(f"Points placed: {len(points)} / 8")
+        st.caption("Live cursor zoom panel is shown on the canvas area.")
         if len(points) < 8:
             st.info("Keep clicking in order: top, right, bottom, left.")
             st.stop()
@@ -119,6 +122,7 @@ if locked_points is None:
             st.warning("Using first 8 points only.")
             points = points[:8]
         if st.button("Lock points and continue"):
+            reset_line_controls()
             st.session_state["line_mark_locked_points"] = points
             st.session_state["line_mark_stage"] = "lines"
             st.rerun()
@@ -131,9 +135,11 @@ with right_col:
     action_cols = st.columns(2)
     with action_cols[0]:
         if st.button("Re-mark points"):
+            reset_line_controls()
             st.session_state.pop("line_mark_locked_points", None)
             st.session_state.pop("line_mark_stage", None)
             st.session_state.pop("line_mark_adjusted_points", None)
+            st.session_state.pop("line_mark_canvas_points", None)
             st.session_state["line_mark_canvas_nonce"] += 1
             st.rerun()
     if stage == "lines":
@@ -157,24 +163,24 @@ with right_col:
         st.caption("Line controls: drag on axis + rotate")
         axis_cols = st.columns(4)
         with axis_cols[0]:
-            top_line_y = _persistent_int_input("Top Y", "line_top_y", "line_top_y_widget")
+            top_line_y = persistent_int_input("Top Y", "line_top_y", "line_top_y_widget")
         with axis_cols[1]:
-            right_line_x = _persistent_int_input("Right X", "line_right_x", "line_right_x_widget")
+            right_line_x = persistent_int_input("Right X", "line_right_x", "line_right_x_widget")
         with axis_cols[2]:
-            bottom_line_y = _persistent_int_input("Bottom Y", "line_bottom_y", "line_bottom_y_widget")
+            bottom_line_y = persistent_int_input("Bottom Y", "line_bottom_y", "line_bottom_y_widget")
         with axis_cols[3]:
-            left_line_x = _persistent_int_input("Left X", "line_left_x", "line_left_x_widget")
+            left_line_x = persistent_int_input("Left X", "line_left_x", "line_left_x_widget")
         angle_cols = st.columns(4)
         with angle_cols[0]:
-            top_line_angle = _persistent_float_input("Top Angle", "line_top_angle", "line_top_angle_widget")
+            top_line_angle = persistent_float_input("Top Angle", "line_top_angle", "line_top_angle_widget")
         with angle_cols[1]:
-            right_line_angle = _persistent_float_input("Right Angle", "line_right_angle", "line_right_angle_widget")
+            right_line_angle = persistent_float_input("Right Angle", "line_right_angle", "line_right_angle_widget")
         with angle_cols[2]:
-            bottom_line_angle = _persistent_float_input(
+            bottom_line_angle = persistent_float_input(
                 "Bottom Angle", "line_bottom_angle", "line_bottom_angle_widget"
             )
         with angle_cols[3]:
-            left_line_angle = _persistent_float_input("Left Angle", "line_left_angle", "line_left_angle_widget")
+            left_line_angle = persistent_float_input("Left Angle", "line_left_angle", "line_left_angle_widget")
     else:
         top_line_y = int(st.session_state.get("line_top_y", 0))
         right_line_x = int(st.session_state.get("line_right_x", 0))
@@ -224,8 +230,8 @@ if warped_card is None:
     st.stop()
 
 card_height, card_width = warped_card.shape[:2]
-base_left, base_top = 10, 10
-base_right, base_bottom = max(card_width - 11, base_left + 1), max(card_height - 11, base_top + 1)
+base_left, base_top = 30, 30
+base_right, base_bottom = max(card_width - 31, base_left + 1), max(card_height - 31, base_top + 1)
 
 with right_col:
     nudge_top, nudge_right, nudge_bottom, nudge_left, color_label, zoom_mode = line_utils.render_inner_border_controls()

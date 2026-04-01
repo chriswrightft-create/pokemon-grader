@@ -3,6 +3,7 @@ from typing import Optional
 import streamlit as st
 import streamlit.components.v1 as components
 import streamlit.elements.image as streamlit_image
+from pages.line_mark_canvas_js import get_canvas_enhancement_script
 from pages.line_mark_preview import border_color, draw_visible_inner_border, edge_preview, line_stage_zoom_preview, select_zoomed_inner_preview
 
 
@@ -48,30 +49,9 @@ def fit_size(width: int, height: int, max_width: int = 900, max_height: int = 70
 
 
 
-def force_canvas_crosshair() -> None:
+def force_canvas_crosshair(hover_bridge_label: str = "", source_image_url: str = "") -> None:
     components.html(
-        """
-        <script>
-        (function applyCrosshair() {
-          const styleId = "line-mark-crosshair-style";
-          const css = "html, body, canvas, .upper-canvas, .lower-canvas { cursor: crosshair !important; }";
-          const frames = window.parent.document.querySelectorAll("iframe");
-          frames.forEach((frame) => {
-            try {
-              const doc = frame.contentDocument || frame.contentWindow.document;
-              if (!doc) return;
-              if (!doc.getElementById(styleId)) {
-                const style = doc.createElement("style");
-                style.id = styleId;
-                style.textContent = css;
-                doc.head.appendChild(style);
-              }
-            } catch (error) {}
-          });
-          setTimeout(applyCrosshair, 1500);
-        })();
-        </script>
-        """,
+        get_canvas_enhancement_script(hover_bridge_label=hover_bridge_label, source_image_url=source_image_url),
         height=0,
         width=0,
     )
@@ -138,27 +118,27 @@ def render_grader_badges(result) -> None:
     centering_thresholds = {
         "PSA": {"min": 45, "max": 55},
         "TAG": {"min": 45, "max": 55},
-        "CGC": {"min": 45, "max": 55},
+        "BGS": {"min": 45, "max": 55},
         "ACE": {"min": 40, "max": 60},
     }
     pristine_thresholds = {
         "TAG": {"min": 49, "max": 51},
-        "CGC": {"min": 48, "max": 52},
+        "BGS": {"min": 48, "max": 52},
     }
-    cgc_black_label_threshold = {"min": 50, "max": 50}
+    bgs_black_label_threshold = {"min": 50, "max": 50}
     badge_markup = []
     for grader_label, threshold in centering_thresholds.items():
         badge_color = "#10b981" if _passes_centering_threshold(result, threshold) else "#ef4444"
         display_label = grader_label
-        if grader_label == "CGC" and _passes_centering_threshold(result, cgc_black_label_threshold):
-            display_label = "BLACK"
+        if grader_label == "BGS" and _passes_centering_threshold(result, bgs_black_label_threshold):
+            display_label = "BGS BLACK"
             badge_color = "#111111"
         elif grader_label in pristine_thresholds and _passes_centering_threshold(result, pristine_thresholds[grader_label]):
-            display_label = "PRISTINE"
+            display_label = f"{grader_label} PRISTINE"
         badge_markup.append(
             f'<div style="flex:0 0 112px;width:112px;height:84px;border-radius:10px;display:flex;align-items:center;justify-content:center;'
             f'padding:8px;background:{badge_color};color:#ffffff;box-sizing:border-box;">'
-            f'<span style="font-size:18px;font-weight:800;line-height:1.0;text-align:center;white-space:nowrap;">{display_label}</span>'
+            f'<span style="font-size:14px;font-weight:800;line-height:1.0;text-align:center;white-space:normal;">{display_label}</span>'
             "</div>"
         )
     single_row_html = "".join(badge_markup)
