@@ -19,8 +19,14 @@ from border_measurement import calculate_ratios_from_bounds
 from pages import line_mark_state as line_mark_state
 from pages import line_mark_utils as line_utils
 
-line_mark_state = importlib.reload(line_mark_state)
-line_utils = importlib.reload(line_utils)
+try:
+    line_mark_state = importlib.reload(line_mark_state)
+except ImportError:
+    pass
+try:
+    line_utils = importlib.reload(line_utils)
+except ImportError:
+    pass
 line_utils.apply_streamlit_canvas_compatibility()
 
 initialize_line_mark_defaults = line_mark_state.initialize_line_mark_defaults
