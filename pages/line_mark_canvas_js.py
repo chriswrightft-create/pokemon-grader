@@ -158,7 +158,7 @@ def get_canvas_enhancement_script(hover_bridge_label: str = "", source_image_url
                 });
                 if (!matched) return null;
                 const backgroundImage = window.getComputedStyle(matched).backgroundImage || "";
-                const match = backgroundImage.match(/^url\(["']?(.*?)["']?\)$/);
+                const match = backgroundImage.match(/^url\\(["']?(.*?)["']?\\)$/);
                 if (!match || !match[1]) return null;
                 const imageUrl = match[1];
                 if (imageUrl !== cachedBackgroundUrl) {
