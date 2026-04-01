@@ -1,12 +1,19 @@
 import base64
 import io
 import importlib
+import sys
+from pathlib import Path
 
 import cv2
 import numpy as np
 import streamlit as st
 from PIL import Image
 from streamlit_drawable_canvas import st_canvas
+
+# Streamlit Cloud can run this page as entrypoint, so ensure repo root is importable.
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 from border_measurement import calculate_ratios_from_bounds
 from pages import line_mark_state as line_mark_state
