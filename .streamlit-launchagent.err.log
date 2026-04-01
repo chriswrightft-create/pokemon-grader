@@ -4063,3 +4063,7 @@ shell-init: error retrieving current directory: getcwd: cannot access parent dir
 /bin/zsh: can't open input file: /Users/chriswright/Documents/repos/grading/run_grader_local.sh
 shell-init: error retrieving current directory: getcwd: cannot access parent directories: Operation not permitted
 /bin/zsh: can't open input file: /Users/chriswright/Documents/repos/grading/run_grader_local.sh
+shell-init: error retrieving current directory: getcwd: cannot access parent directories: Operation not permitted
+/bin/zsh: can't open input file: /Users/chriswright/Documents/repos/grading/run_grader_local.sh
+shell-init: error retrieving current directory: getcwd: cannot access parent directories: Operation not permitted
+/bin/zsh: can't open input file: /Users/chriswright/Documents/repos/grading/run_grader_local.sh
