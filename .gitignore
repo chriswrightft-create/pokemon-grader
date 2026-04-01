@@ -215,6 +215,7 @@ __pycache__/
 .venv/
 venv/
 env/
+testImages/
 
 # Streamlit + local logs/config
 .streamlit-launchagent.err.log
