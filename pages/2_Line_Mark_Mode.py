@@ -90,6 +90,10 @@ canvas_background.save(zoom_buffer, format="PNG")
 zoom_source_url = f"data:image/png;base64,{base64.b64encode(zoom_buffer.getvalue()).decode('ascii')}"
 
 left_col, right_col = st.columns([3, 2])
+with right_col:
+    zoom_factor_value = int(
+        st.number_input("Zoom magnification", min_value=2, max_value=12, value=7, step=1, key="line_zoom_factor")
+    )
 
 
 def clear_all_marked_points() -> None:
@@ -105,6 +109,7 @@ if locked_points is None:
     with left_col:
         line_utils.force_canvas_crosshair(
             source_image_url=zoom_source_url,
+            zoom_factor=zoom_factor_value,
         )
         canvas_result = st_canvas(
             fill_color="rgba(0, 0, 0, 0)",
@@ -264,16 +269,17 @@ with right_col:
 with right_col:
     if stage == "lines":
         with left_col:
+            line_utils.force_stage_image_zoom(zoom_factor=zoom_factor_value)
             st.image(
                 line_utils.select_zoomed_line_preview(
                     image_rgb,
                     adjusted_points,
                     st.session_state.get("line_outer_zoom_mode", "full"),
-                    padding=5,
+                    padding=12,
                     line_bgr=line_utils.border_color(outer_line_color_label),
                 ),
-                caption="Line stage zoom: outer lines with 5px margin.",
-                use_container_width=True,
+                caption="Line stage zoom: outer lines with 12px margin.",
+                width="content",
             )
         st.stop()
 
@@ -306,10 +312,11 @@ display_visual = line_utils.select_zoomed_inner_preview(
 )
 
 with left_col:
+    line_utils.force_stage_image_zoom(zoom_factor=zoom_factor_value)
     st.image(
         display_visual,
         caption="Full card by default. Top/Bottom inputs zoom 50% width, Left/Right inputs zoom 50% height.",
-        width="stretch" if zoom_mode == "full" else "content",
+        width="content",
     )
 with right_col:
     line_utils.render_result_summary(result)

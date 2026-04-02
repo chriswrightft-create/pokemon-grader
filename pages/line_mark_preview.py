@@ -34,11 +34,11 @@ def edge_preview(
             end_point = (int(round(second_point[0] + dx * extend)), int(round(second_point[1] + dy * extend)))
             clipped, clip_start, clip_end = cv2.clipLine((0, 0, image_width, image_height), start_point, end_point)
             if clipped:
-                cv2.line(overlay, clip_start, clip_end, line_bgr, 1, lineType=cv2.LINE_8)
+                cv2.line(overlay, clip_start, clip_end, line_bgr, 1, lineType=cv2.LINE_AA)
         else:
-            cv2.line(overlay, first, second, line_bgr, 1, lineType=cv2.LINE_8)
-        cv2.circle(overlay, first, 3, line_bgr, 1, lineType=cv2.LINE_8)
-        cv2.circle(overlay, second, 3, line_bgr, 1, lineType=cv2.LINE_8)
+            cv2.line(overlay, first, second, line_bgr, 1, lineType=cv2.LINE_AA)
+        cv2.circle(overlay, first, 3, line_bgr, 1, lineType=cv2.LINE_AA)
+        cv2.circle(overlay, second, 3, line_bgr, 1, lineType=cv2.LINE_AA)
     return cv2.addWeighted(overlay, 0.45, preview, 0.55, 0.0)
 
 
@@ -72,30 +72,6 @@ def draw_cross_markers(image_rgb: np.ndarray, points: list[tuple[float, float]],
         cv2.line(preview, (center_x - size, center_y), (center_x + size, center_y), (0, 255, 255), 1, lineType=cv2.LINE_AA)
         cv2.line(preview, (center_x, center_y - size), (center_x, center_y + size), (0, 255, 255), 1, lineType=cv2.LINE_AA)
     return preview
-
-
-def zoom_around_point(
-    image_rgb: np.ndarray,
-    point: tuple[float, float],
-    radius_px: int = 10,
-    zoom_factor: int = 8,
-) -> np.ndarray:
-    image_height, image_width = image_rgb.shape[:2]
-    center_x = int(round(point[0]))
-    center_y = int(round(point[1]))
-    left = max(0, center_x - radius_px)
-    right = min(image_width, center_x + radius_px)
-    top = max(0, center_y - radius_px)
-    bottom = min(image_height, center_y + radius_px)
-    crop = image_rgb[top:bottom, left:right]
-    if crop.size == 0:
-        return image_rgb.copy()
-    zoomed = cv2.resize(crop, None, fx=zoom_factor, fy=zoom_factor, interpolation=cv2.INTER_NEAREST)
-    zh, zw = zoomed.shape[:2]
-    cx, cy = zw // 2, zh // 2
-    cv2.line(zoomed, (cx - 8, cy), (cx + 8, cy), (0, 255, 255), 1, lineType=cv2.LINE_8)
-    cv2.line(zoomed, (cx, cy - 8), (cx, cy + 8), (0, 255, 255), 1, lineType=cv2.LINE_8)
-    return zoomed
 
 
 def _draw_infinite_pair_lines(image_rgb: np.ndarray, points: list[tuple[float, float]]) -> None:
@@ -133,9 +109,8 @@ def select_zoomed_line_preview(
     image_height, image_width = preview.shape[:2]
     if zoom_mode == "top":
         anchor_y = int(round((points[0][1] + points[1][1]) / 2.0))
-        zoom_top = max(0, anchor_y - 30)
-        zoom_bottom = min(image_height, zoom_top + 60)
-        zoom_top = max(0, zoom_bottom - 60)
+        zoom_top = max(0, anchor_y - 30 - padding)
+        zoom_bottom = min(image_height, anchor_y + 30 + padding)
         first_x = int(round(points[0][0]))
         second_x = int(round(points[1][0]))
         min_x = min(first_x, second_x)
@@ -143,14 +118,13 @@ def select_zoomed_line_preview(
         line_width = max(1, max_x - min_x)
         middle_left = min_x + int(round(line_width * 0.125))
         middle_right = max_x - int(round(line_width * 0.125))
-        zoom_left = max(0, middle_left)
-        zoom_right = min(image_width, max(zoom_left + 1, middle_right))
+        zoom_left = max(0, middle_left - padding)
+        zoom_right = min(image_width, max(zoom_left + 1, middle_right + padding))
         return preview[zoom_top:zoom_bottom, zoom_left:zoom_right]
     if zoom_mode == "bottom":
         anchor_y = int(round((points[4][1] + points[5][1]) / 2.0))
-        zoom_top = max(0, anchor_y - 30)
-        zoom_bottom = min(image_height, zoom_top + 60)
-        zoom_top = max(0, zoom_bottom - 60)
+        zoom_top = max(0, anchor_y - 30 - padding)
+        zoom_bottom = min(image_height, anchor_y + 30 + padding)
         first_x = int(round(points[4][0]))
         second_x = int(round(points[5][0]))
         min_x = min(first_x, second_x)
@@ -158,14 +132,13 @@ def select_zoomed_line_preview(
         line_width = max(1, max_x - min_x)
         middle_left = min_x + int(round(line_width * 0.125))
         middle_right = max_x - int(round(line_width * 0.125))
-        zoom_left = max(0, middle_left)
-        zoom_right = min(image_width, max(zoom_left + 1, middle_right))
+        zoom_left = max(0, middle_left - padding)
+        zoom_right = min(image_width, max(zoom_left + 1, middle_right + padding))
         return preview[zoom_top:zoom_bottom, zoom_left:zoom_right]
     if zoom_mode == "left":
         anchor_x = int(round((points[6][0] + points[7][0]) / 2.0))
-        zoom_left = max(0, anchor_x - 30)
-        zoom_right = min(image_width, zoom_left + 60)
-        zoom_left = max(0, zoom_right - 60)
+        zoom_left = max(0, anchor_x - 30 - padding)
+        zoom_right = min(image_width, anchor_x + 30 + padding)
         first_y = int(round(points[6][1]))
         second_y = int(round(points[7][1]))
         min_y = min(first_y, second_y)
@@ -173,14 +146,13 @@ def select_zoomed_line_preview(
         line_height = max(1, max_y - min_y)
         middle_top = min_y + int(round(line_height * 0.125))
         middle_bottom = max_y - int(round(line_height * 0.125))
-        zoom_top = max(0, middle_top)
-        zoom_bottom = min(image_height, max(zoom_top + 1, middle_bottom))
+        zoom_top = max(0, middle_top - padding)
+        zoom_bottom = min(image_height, max(zoom_top + 1, middle_bottom + padding))
         return preview[zoom_top:zoom_bottom, zoom_left:zoom_right]
     if zoom_mode == "right":
         anchor_x = int(round((points[2][0] + points[3][0]) / 2.0))
-        zoom_left = max(0, anchor_x - 30)
-        zoom_right = min(image_width, zoom_left + 60)
-        zoom_left = max(0, zoom_right - 60)
+        zoom_left = max(0, anchor_x - 30 - padding)
+        zoom_right = min(image_width, anchor_x + 30 + padding)
         first_y = int(round(points[2][1]))
         second_y = int(round(points[3][1]))
         min_y = min(first_y, second_y)
@@ -188,8 +160,8 @@ def select_zoomed_line_preview(
         line_height = max(1, max_y - min_y)
         middle_top = min_y + int(round(line_height * 0.125))
         middle_bottom = max_y - int(round(line_height * 0.125))
-        zoom_top = max(0, middle_top)
-        zoom_bottom = min(image_height, max(zoom_top + 1, middle_bottom))
+        zoom_top = max(0, middle_top - padding)
+        zoom_bottom = min(image_height, max(zoom_top + 1, middle_bottom + padding))
         return preview[zoom_top:zoom_bottom, zoom_left:zoom_right]
     return line_stage_zoom_preview(image_rgb, points, padding=padding, line_bgr=line_bgr)
 

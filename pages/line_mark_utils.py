@@ -19,10 +19,10 @@ draw_visible_inner_border = _preview.draw_visible_inner_border
 edge_preview = _preview.edge_preview
 line_stage_zoom_preview = _preview.line_stage_zoom_preview
 draw_cross_markers = _preview.draw_cross_markers
-zoom_around_point = _preview.zoom_around_point
 select_zoomed_line_preview = _preview.select_zoomed_line_preview
 fit_size = _ui.fit_size
 force_canvas_crosshair = _ui.force_canvas_crosshair
+force_stage_image_zoom = _ui.force_stage_image_zoom
 point_list_from_canvas = _ui.point_list_from_canvas
 render_inner_border_controls = _ui.render_inner_border_controls
 render_result_summary = _ui.render_result_summary
@@ -35,10 +35,10 @@ __all__ = [
     "edge_preview",
     "line_stage_zoom_preview",
     "draw_cross_markers",
-    "zoom_around_point",
     "select_zoomed_line_preview",
     "fit_size",
     "force_canvas_crosshair",
+    "force_stage_image_zoom",
     "line_controlled_points",
     "point_list_from_canvas",
     "render_inner_border_controls",

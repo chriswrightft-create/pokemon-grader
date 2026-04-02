@@ -3,7 +3,7 @@ from typing import Optional
 import streamlit as st
 import streamlit.components.v1 as components
 import streamlit.elements.image as streamlit_image
-from pages.line_mark_canvas_js import get_canvas_enhancement_script
+from pages.line_mark_canvas_js import get_canvas_enhancement_script, get_stage_image_zoom_script
 from pages.line_mark_preview import border_color, draw_visible_inner_border, edge_preview, line_stage_zoom_preview, select_zoomed_inner_preview
 
 
@@ -49,12 +49,16 @@ def fit_size(width: int, height: int, max_width: int = 900, max_height: int = 70
 
 
 
-def force_canvas_crosshair(source_image_url: str = "") -> None:
+def force_canvas_crosshair(source_image_url: str = "", zoom_factor: int = 4) -> None:
     components.html(
-        get_canvas_enhancement_script(source_image_url=source_image_url),
+        get_canvas_enhancement_script(source_image_url=source_image_url, zoom_factor=zoom_factor),
         height=0,
         width=0,
     )
+
+
+def force_stage_image_zoom(zoom_factor: int = 7) -> None:
+    components.html(get_stage_image_zoom_script(zoom_factor=zoom_factor), height=0, width=0)
 
 
 def render_inner_border_controls() -> tuple[int, int, int, int, str, str]:
