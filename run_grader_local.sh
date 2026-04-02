@@ -1,7 +1,7 @@
 #!/bin/zsh
 set -euo pipefail
 
-PROJECT_DIR="/Users/chriswright/Documents/repos/grading"
+PROJECT_DIR="$(cd "$(dirname "${0}")" && pwd)"
 VENV_BIN="$PROJECT_DIR/.venv/bin"
 
 cd "$PROJECT_DIR"
