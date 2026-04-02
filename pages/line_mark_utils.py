@@ -23,6 +23,8 @@ select_zoomed_line_preview = _preview.select_zoomed_line_preview
 fit_size = _ui.fit_size
 force_canvas_crosshair = _ui.force_canvas_crosshair
 force_stage_image_zoom = _ui.force_stage_image_zoom
+inject_line_mark_styles = _ui.inject_line_mark_styles
+normalized_color_label = _ui.normalized_color_label
 point_list_from_canvas = _ui.point_list_from_canvas
 render_inner_border_controls = _ui.render_inner_border_controls
 render_result_summary = _ui.render_result_summary
@@ -39,6 +41,8 @@ __all__ = [
     "fit_size",
     "force_canvas_crosshair",
     "force_stage_image_zoom",
+    "inject_line_mark_styles",
+    "normalized_color_label",
     "line_controlled_points",
     "point_list_from_canvas",
     "render_inner_border_controls",

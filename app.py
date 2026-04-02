@@ -1,236 +1,248 @@
-import tempfile
+import base64
+import io
+import importlib
+import sys
+from pathlib import Path
 
 import cv2
 import numpy as np
 import streamlit as st
+from PIL import Image
+from streamlit_drawable_canvas import st_canvas
 
-from card_detection import detect_card_quad
-from pokemon_grader import (
-    CardDetectionError,
-    analyze_adjusted_card_with_debug,
-    analyze_card_borders_with_debug,
-    calculate_ratios_from_bounds,
-    create_visualization,
-    load_image,
+# Streamlit Cloud can run this page as entrypoint, so ensure repo root is importable.
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from border_measurement import calculate_ratios_from_bounds
+from pages import line_mark_line_stage as line_stage_ui
+from pages import line_mark_state as line_mark_state
+from pages import line_mark_utils as line_utils
+from pages.line_mark_warp import get_cached_warped_card
+
+try:
+    line_mark_state = importlib.reload(line_mark_state)
+except ImportError:
+    pass
+try:
+    line_stage_ui = importlib.reload(line_stage_ui)
+except ImportError:
+    pass
+try:
+    line_utils = importlib.reload(line_utils)
+except ImportError:
+    pass
+line_utils.apply_streamlit_canvas_compatibility()
+
+initialize_line_mark_defaults = line_mark_state.initialize_line_mark_defaults
+persistent_float_input = line_mark_state.persistent_float_input
+persistent_int_input = line_mark_state.persistent_int_input
+reset_line_controls = getattr(line_mark_state, "reset_line_controls", lambda: None)
+
+
+st.set_page_config(page_title="Line Mark Mode", layout="wide", initial_sidebar_state="collapsed")
+st.title("Line Mark Mode")
+st.caption("Click 12 points: top(3), right(3), bottom(3), left(3).")
+upload_col, info_col = st.columns(2, gap="small")
+with upload_col:
+    uploaded_file = st.file_uploader("Upload card image", type=["png", "jpg", "jpeg", "webp"], key="line_mark_upload", label_visibility="collapsed")
+line_utils.inject_line_mark_styles()
+
+initialize_line_mark_defaults()
+if uploaded_file is None:
+    with info_col:
+        st.info("Upload an image to begin.")
+    st.stop()
+
+image_bytes = uploaded_file.getvalue()
+image_bgr = cv2.imdecode(np.frombuffer(image_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
+if image_bgr is None:
+    st.error("Unable to decode uploaded image.")
+    st.stop()
+
+image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+pil_image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+canvas_width, canvas_height, canvas_scale = line_utils.fit_size(pil_image.width, pil_image.height)
+canvas_image = pil_image.resize((canvas_width, canvas_height), Image.Resampling.LANCZOS)
+canvas_points = st.session_state.get("line_mark_canvas_points", [])
+canvas_preview = line_utils.draw_cross_markers(np.array(canvas_image), canvas_points) if canvas_points else np.array(canvas_image)
+canvas_background = Image.fromarray(canvas_preview)
+zoom_buffer = io.BytesIO()
+canvas_background.save(zoom_buffer, format="PNG")
+zoom_source_url = f"data:image/png;base64,{base64.b64encode(zoom_buffer.getvalue()).decode('ascii')}"
+
+left_col, right_col = st.columns([3, 2])
+with right_col:
+    zoom_factor_value = int(st.number_input("Zoom magnification", min_value=2, max_value=12, value=5, step=1, key="line_zoom_factor"))
+
+
+def clear_all_marked_points() -> None:
+    reset_line_controls()
+    line_stage_ui.clear_marking_state()
+    st.rerun()
+locked_points = st.session_state.get("line_mark_locked_points")
+if locked_points is None:
+    with left_col:
+        line_utils.force_canvas_crosshair(source_image_url=zoom_source_url, zoom_factor=zoom_factor_value)
+        canvas_result = st_canvas(
+            fill_color="rgba(0, 0, 0, 0)",
+            stroke_width=1,
+            stroke_color="#00FFFF",
+            background_image=canvas_background,
+            update_streamlit=True,
+            drawing_mode="point",
+            point_display_radius=0,
+            height=canvas_height,
+            width=canvas_width,
+            key=f"line_mark_canvas_{st.session_state['line_mark_canvas_nonce']}",
+        )
+
+    points = line_utils.point_list_from_canvas(canvas_result.json_data)
+    previous_points = st.session_state.get("line_mark_canvas_points", [])
+    st.session_state["line_mark_canvas_points"] = points
+    if points != previous_points:
+        st.rerun()
+    if canvas_scale < 1.0:
+        points = [(x_value / canvas_scale, y_value / canvas_scale) for x_value, y_value in points]
+    with right_col:
+        st.write(f"Points placed: {len(points)} / 12")
+        st.caption("Live cursor zoom panel is shown on the canvas area.")
+        if len(points) < 12:
+            row_cols = st.columns(2, gap="small")
+            with row_cols[0]:
+                if st.button("Clear marked points"):
+                    clear_all_marked_points()
+            st.info("Keep clicking in order: top(3), right(3), bottom(3), left(3).")
+            st.caption("Quickstart")
+            st.image("assets/quickstart.gif", use_container_width=True)
+            st.stop()
+        if len(points) > 12:
+            st.warning("Using first 12 points only.")
+            points = points[:12]
+        row_cols = st.columns(2, gap="small")
+        with row_cols[0]:
+            if st.button("Clear marked points"):
+                clear_all_marked_points()
+        with row_cols[1]:
+            if st.button("Lock points and continue"):
+                reset_line_controls()
+                st.session_state["line_mark_locked_points"] = points
+                st.session_state["line_mark_stage"] = "lines"
+                st.rerun()
+        st.caption("Quickstart")
+        st.image("assets/quickstart.gif", use_container_width=True)
+        st.stop()
+
+points = list(locked_points)
+stage = st.session_state.get("line_mark_stage", "lines")
+top_line_y = int(st.session_state.get("line_top_y", 0))
+right_line_x = int(st.session_state.get("line_right_x", 0))
+bottom_line_y = int(st.session_state.get("line_bottom_y", 0))
+left_line_x = int(st.session_state.get("line_left_x", 0))
+top_line_angle = float(st.session_state.get("line_top_angle", 0.0))
+right_line_angle = float(st.session_state.get("line_right_angle", 0.0))
+bottom_line_angle = float(st.session_state.get("line_bottom_angle", 0.0))
+left_line_angle = float(st.session_state.get("line_left_angle", 0.0))
+adjusted_points = line_utils.line_controlled_points(
+    points,
+    top_line_y,
+    top_line_angle,
+    right_line_x,
+    right_line_angle,
+    bottom_line_y,
+    bottom_line_angle,
+    left_line_x,
+    left_line_angle,
+)
+with right_col:
+    st.write("Points placed: 12 / 12")
+    stage_action = line_stage_ui.render_stage_actions(stage, clear_all_marked_points, reset_line_controls)
+    if stage == "lines":
+        outer_line_color_label = line_utils.normalized_color_label(
+            line_stage_ui.render_line_stage_controls(persistent_int_input, persistent_float_input)
+        )
+    else:
+        top_line_y = int(st.session_state.get("line_top_y", 0))
+        right_line_x = int(st.session_state.get("line_right_x", 0))
+        bottom_line_y = int(st.session_state.get("line_bottom_y", 0))
+        left_line_x = int(st.session_state.get("line_left_x", 0))
+        top_line_angle = float(st.session_state.get("line_top_angle", 0.0))
+        right_line_angle = float(st.session_state.get("line_right_angle", 0.0))
+        bottom_line_angle = float(st.session_state.get("line_bottom_angle", 0.0))
+        left_line_angle = float(st.session_state.get("line_left_angle", 0.0))
+        adjusted_points = line_utils.line_controlled_points(
+            points,
+            top_line_y,
+            top_line_angle,
+            right_line_x,
+            right_line_angle,
+            bottom_line_y,
+            bottom_line_angle,
+            left_line_x,
+            left_line_angle,
+        )
+        outer_line_color_label = line_utils.normalized_color_label(st.session_state.get("line_outer_color_label", "Red"))
+    if stage_action == "continue":
+        st.session_state["line_mark_adjusted_points"] = adjusted_points
+        st.session_state["line_mark_stage"] = "border"
+        st.rerun()
+    if stage_action == "back":
+        st.session_state["line_mark_stage"] = "lines"
+        st.rerun()
+with right_col:
+    if stage == "lines":
+        with left_col:
+            line_utils.force_stage_image_zoom(zoom_factor=zoom_factor_value)
+            st.image(
+                line_utils.select_zoomed_line_preview(
+                    image_rgb,
+                    adjusted_points,
+                    st.session_state.get("line_outer_zoom_mode", "full"),
+                    padding=12,
+                    line_bgr=line_utils.border_color(outer_line_color_label),
+                ),
+                caption="Line stage zoom: outer lines with 12px margin.",
+                width="content",
+            )
+        st.stop()
+
+final_points = st.session_state.get("line_mark_adjusted_points", adjusted_points)
+warped_card = get_cached_warped_card(image_bytes, image_bgr, final_points, line_utils.warp_from_edges)
+if warped_card is None:
+    with right_col:
+        st.error("Could not build card edges from points. Try clearing and re-marking.")
+    st.stop()
+
+card_height, card_width = warped_card.shape[:2]
+base_left, base_top = 30, 30
+base_right, base_bottom = max(card_width - 31, base_left + 1), max(card_height - 31, base_top + 1)
+
+with right_col:
+    nudge_top, nudge_right, nudge_bottom, nudge_left, color_label, zoom_mode = line_utils.render_inner_border_controls()
+
+inner_left = max(1, min(base_left + nudge_left, card_width - 2))
+inner_right = max(inner_left + 1, min(base_right - nudge_right, card_width - 1))
+inner_top = max(1, min(base_top + nudge_top, card_height - 2))
+inner_bottom = max(inner_top + 1, min(base_bottom - nudge_bottom, card_height - 1))
+
+result = calculate_ratios_from_bounds(card_width, card_height, inner_left, inner_right, inner_top, inner_bottom)
+visualized = cv2.cvtColor(warped_card, cv2.COLOR_BGR2RGB)
+visualized = line_utils.draw_visible_inner_border(
+    visualized, inner_left, inner_top, inner_right, inner_bottom, line_utils.border_color(color_label)
+)
+display_visual = line_utils.select_zoomed_inner_preview(
+    visualized, card_width, card_height, inner_left, inner_right, inner_top, inner_bottom, zoom_mode
 )
 
-
-def _inject_styles() -> None:
-    st.markdown(
-        """
-        <style>
-        .block-container {padding-top: 3.25rem; padding-bottom: 0.4rem;}
-        h1 {margin-top: 0; margin-bottom: 0.2rem; font-size: 2rem;}
-        p {margin-bottom: 0.5rem;}
-        div[data-testid="stNumberInput"] {margin-bottom: 0.25rem;}
-        div[data-testid="stMetricValue"] {font-size: 2rem;}
-        div[data-testid="stImage"] img {max-height: 70vh; width: auto; object-fit: contain;}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def _input_px(key: str, label: str, default: int = 0) -> int:
-    st.session_state.setdefault(key, default)
-    value = int(st.number_input(label, step=1, value=int(st.session_state[key]), key=f"{key}_input"))
-    st.session_state[key] = value
-    return value
-
-
-def _seed_corner_inputs_from_auto(image: np.ndarray) -> None:
-    image_key = f"{image.shape[1]}x{image.shape[0]}_{int(image.mean())}_{int(image.std())}"
-    if st.session_state.get("corner_seed_key") == image_key:
-        return
-
-    quad = detect_card_quad(image)
-    h, w = image.shape[:2]
-    if quad is None:
-        defaults = [0, 0, w - 1, 0, w - 1, h - 1, 0, h - 1]
-    else:
-        defaults = [
-            int(quad[0][0]),
-            int(quad[0][1]),
-            int(quad[1][0]),
-            int(quad[1][1]),
-            int(quad[2][0]),
-            int(quad[2][1]),
-            int(quad[3][0]),
-            int(quad[3][1]),
-        ]
-    keys = [
-        "corner_tl_x",
-        "corner_tl_y",
-        "corner_tr_x",
-        "corner_tr_y",
-        "corner_br_x",
-        "corner_br_y",
-        "corner_bl_x",
-        "corner_bl_y",
-    ]
-    for key, value in zip(keys, defaults):
-        st.session_state[key] = value
-    st.session_state["corner_seed_key"] = image_key
-
-
-def _apply_corner_nudges(image: np.ndarray) -> np.ndarray:
-    h, w = image.shape[:2]
-    st.caption("Corner points (absolute px)")
-
-    y_cols = st.columns(4)
-    with y_cols[0]:
-        tl_y = _input_px("corner_tl_y", "Top left Y", 0)
-    with y_cols[1]:
-        tr_y = _input_px("corner_tr_y", "Top right Y", 0)
-    with y_cols[2]:
-        bl_y = _input_px("corner_bl_y", "Bottom left Y", h - 1)
-    with y_cols[3]:
-        br_y = _input_px("corner_br_y", "Bottom right Y", h - 1)
-
-    x_cols = st.columns(4)
-    with x_cols[0]:
-        tl_x = _input_px("corner_tl_x", "Top left X", 0)
-    with x_cols[1]:
-        tr_x = _input_px("corner_tr_x", "Top right X", w - 1)
-    with x_cols[2]:
-        bl_x = _input_px("corner_bl_x", "Bottom left X", 0)
-    with x_cols[3]:
-        br_x = _input_px("corner_br_x", "Bottom right X", w - 1)
-
-    source = np.array([[tl_x, tl_y], [tr_x, tr_y], [br_x, br_y], [bl_x, bl_y]], dtype=np.float32)
-    padding = 220
-    padded = cv2.copyMakeBorder(image, padding, padding, padding, padding, cv2.BORDER_CONSTANT, value=(0, 0, 0))
-    source[:, 0] += padding
-    source[:, 1] += padding
-    destination = np.array([[0, 0], [w - 1, 0], [w - 1, h - 1], [0, h - 1]], dtype=np.float32)
-    matrix = cv2.getPerspectiveTransform(source, destination)
-    return cv2.warpPerspective(
-        padded,
-        matrix,
-        (w, h),
-        flags=cv2.INTER_LANCZOS4,
-        borderMode=cv2.BORDER_CONSTANT,
-        borderValue=(0, 0, 0),
-    )
-
-
-def _apply_outer_border_nudges(image: np.ndarray) -> np.ndarray:
-    st.caption("Outer nudges (+in, -out)")
-    cols = st.columns(4)
-    with cols[0]:
-        top = _input_px("outer_top", "Top", 0)
-    with cols[1]:
-        right = _input_px("outer_right", "Right", 0)
-    with cols[2]:
-        bottom = _input_px("outer_bottom", "Bottom", 0)
-    with cols[3]:
-        left = _input_px("outer_left", "Left", 0)
-
-    h, w = image.shape[:2]
-    c_left, c_top = max(left, 0), max(top, 0)
-    c_right = max(w - max(right, 0), c_left + 1)
-    c_bottom = max(h - max(bottom, 0), c_top + 1)
-    cropped = image[c_top:c_bottom, c_left:c_right]
-    return cv2.copyMakeBorder(
-        cropped,
-        max(-top, 0),
-        max(-bottom, 0),
-        max(-left, 0),
-        max(-right, 0),
-        cv2.BORDER_CONSTANT,
-        value=(0, 0, 0),
-    )
-
-
-def _apply_inner_border_nudges(debug):
-    st.caption("Inner nudges (+in, -out)")
-    cols = st.columns(4)
-    with cols[0]:
-        top = _input_px("inner_top", "Top", 0)
-    with cols[1]:
-        right = _input_px("inner_right", "Right", 0)
-    with cols[2]:
-        bottom = _input_px("inner_bottom", "Bottom", 0)
-    with cols[3]:
-        left = _input_px("inner_left", "Left", 0)
-
-    h, w = debug.warped_card_image.shape[:2]
-    left_x = max(1, min(debug.inner_left_x + left, w - 2))
-    right_x = max(left_x + 1, min(debug.inner_right_x - right, w - 1))
-    top_y = max(1, min(debug.inner_top_y + top, h - 2))
-    bottom_y = max(top_y + 1, min(debug.inner_bottom_y - bottom, h - 1))
-    adjusted_debug = type(debug)(
-        warped_card_image=debug.warped_card_image,
-        inner_left_x=left_x,
-        inner_right_x=right_x,
-        inner_top_y=top_y,
-        inner_bottom_y=bottom_y,
-    )
-    adjusted_result = calculate_ratios_from_bounds(w, h, left_x, right_x, top_y, bottom_y)
-    return adjusted_result, adjusted_debug
-
-
-def _selected_inner_border_color() -> tuple[int, int, int]:
-    color_map = {
-        "Magenta": (255, 0, 255),
-        "Cyan": (255, 255, 0),
-        "Yellow": (0, 255, 255),
-        "Green": (0, 255, 0),
-        "Red": (0, 0, 255),
-        "White": (255, 255, 255),
-    }
-    selected_label = st.selectbox("Inner border color", list(color_map.keys()), index=0)
-    return color_map[selected_label]
-
-
-st.set_page_config(page_title="Pokemon Card Border Grader", layout="wide")
-st.title("Pokemon Card Border Grader")
-st.write("Auto-detects outer and inner borders, then lets you nudge with 1px controls.")
-_inject_styles()
-uploaded_file = st.file_uploader("Upload card image", type=["png", "jpg", "jpeg", "webp"])
-if uploaded_file is not None:
-    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{uploaded_file.name.split('.')[-1].lower()}") as temp_file:
-        temp_file.write(uploaded_file.read())
-        temp_path = temp_file.name
-    try:
-        image = load_image(temp_path)
-        image_col, controls_col = st.columns([3, 3])
-        with controls_col:
-            st.subheader("Adjustments")
-            manual_corner = st.checkbox("Manual corner nudges", value=False)
-            if manual_corner:
-                _seed_corner_inputs_from_auto(image)
-                image = _apply_corner_nudges(image)
-            manual_outer = st.checkbox("Manual outer-border nudges", value=False)
-            if manual_outer:
-                image = _apply_outer_border_nudges(image)
-
-            if manual_corner or manual_outer:
-                result, debug = analyze_adjusted_card_with_debug(image)
-            else:
-                result, debug = analyze_card_borders_with_debug(image)
-
-            if st.checkbox("Manual inner-border nudges", value=False):
-                result, debug = _apply_inner_border_nudges(debug)
-            inner_border_color = _selected_inner_border_color()
-    except (CardDetectionError, FileNotFoundError, ValueError) as error:
-        st.error(f"Unable to grade image: {error}")
-    else:
-        with image_col:
-            st.subheader("Measurement Visualization")
-            st.image(
-                create_visualization(debug, inner_border_bgr=inner_border_color),
-                caption="Magenta = detected inner frame.",
-                width=760,
-            )
-        with controls_col:
-            st.metric("Left/Right Centering", f"{result.left_right_ratio[0]}/{result.left_right_ratio[1]}")
-            st.metric("Top/Bottom Centering", f"{result.top_bottom_ratio[0]}/{result.top_bottom_ratio[1]}")
-            st.write(
-                f"Border widths (px): left={result.left_px}, right={result.right_px}, "
-                f"top={result.top_px}, bottom={result.bottom_px}"
-            )
-            if result.in_45_55_range:
-                st.success("Pass: card is within 45/55 on both axes.")
-            else:
-                st.warning("Fail: card is outside 45/55 on at least one axis.")
+with left_col:
+    stage_image_col, stage_summary_col = st.columns([4, 2], gap="small")
+    with stage_image_col:
+        line_utils.force_stage_image_zoom(zoom_factor=zoom_factor_value)
+        st.image(
+            display_visual,
+            caption="Full card by default. Top/Bottom inputs zoom 50% width, Left/Right inputs zoom 50% height.",
+            width="content",
+        )
+    with stage_summary_col:
+        line_utils.render_result_summary(result)

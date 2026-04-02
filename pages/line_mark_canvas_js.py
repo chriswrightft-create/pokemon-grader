@@ -126,8 +126,19 @@ def get_canvas_enhancement_script(source_image_url: str = "", zoom_factor: int =
               const sampleY = (clientY - targetRect.top) * syScale;
               const sampleW = Math.max(2, sample * sxScale);
               const sampleH = Math.max(2, sample * syScale);
-              const cx = Math.max(0, Math.min(sampleX - sampleW / 2, providedImage.naturalWidth - sampleW));
-              const cy = Math.max(0, Math.min(sampleY - sampleH / 2, providedImage.naturalHeight - sampleH));
+              const srcX = sampleX - sampleW / 2;
+              const srcY = sampleY - sampleH / 2;
+              const srcX0 = Math.max(0, srcX);
+              const srcY0 = Math.max(0, srcY);
+              const srcX1 = Math.min(providedImage.naturalWidth, srcX + sampleW);
+              const srcY1 = Math.min(providedImage.naturalHeight, srcY + sampleH);
+              const srcW = Math.max(0, srcX1 - srcX0);
+              const srcH = Math.max(0, srcY1 - srcY0);
+              const destLensSize = radius * 2;
+              const dstX = (Math.max(0, srcX0 - srcX) / sampleW) * destLensSize;
+              const dstY = (Math.max(0, srcY0 - srcY) / sampleH) * destLensSize;
+              const dstW = (srcW / sampleW) * destLensSize;
+              const dstH = (srcH / sampleH) * destLensSize;
 
               lens.style.left = `${clientX - radius}px`;
               lens.style.top = `${clientY - radius}px`;
@@ -135,12 +146,16 @@ def get_canvas_enhancement_script(source_image_url: str = "", zoom_factor: int =
               sidePanel.style.display = "block";
 
               lensContext.clearRect(0, 0, lens.width, lens.height);
+              lensContext.fillStyle = "rgba(0,0,0,0.55)";
+              lensContext.fillRect(0, 0, lens.width, lens.height);
               lensContext.save();
               lensContext.beginPath();
               lensContext.arc(radius, radius, radius - 1, 0, Math.PI * 2);
               lensContext.clip();
               lensContext.imageSmoothingEnabled = false;
-              lensContext.drawImage(providedImage, cx, cy, sampleW, sampleH, 0, 0, radius * 2, radius * 2);
+              if (srcW > 0 && srcH > 0 && dstW > 0 && dstH > 0) {
+                lensContext.drawImage(providedImage, srcX0, srcY0, srcW, srcH, dstX, dstY, dstW, dstH);
+              }
               lensContext.restore();
               lensContext.strokeStyle = "#00ffff";
               lensContext.lineWidth = 1;
@@ -149,18 +164,22 @@ def get_canvas_enhancement_script(source_image_url: str = "", zoom_factor: int =
               lensContext.stroke();
 
               sideContext.clearRect(0, 0, sidePanelCanvas.width, sidePanelCanvas.height);
+              sideContext.fillStyle = "rgba(0,0,0,0.55)";
+              sideContext.fillRect(0, 0, sidePanelCanvas.width, sidePanelCanvas.height);
               sideContext.imageSmoothingEnabled = false;
-              sideContext.drawImage(
-                providedImage,
-                cx,
-                cy,
-                sampleW,
-                sampleH,
-                0,
-                0,
-                sidePanelCanvas.width,
-                sidePanelCanvas.height
-              );
+              if (srcW > 0 && srcH > 0) {
+                sideContext.drawImage(
+                  providedImage,
+                  srcX0,
+                  srcY0,
+                  srcW,
+                  srcH,
+                  (Math.max(0, srcX0 - srcX) / sampleW) * sidePanelCanvas.width,
+                  (Math.max(0, srcY0 - srcY) / sampleH) * sidePanelCanvas.height,
+                  (srcW / sampleW) * sidePanelCanvas.width,
+                  (srcH / sampleH) * sidePanelCanvas.height
+                );
+              }
               sideContext.strokeStyle = "#00ffff";
               sideContext.lineWidth = 1.25;
               sideContext.lineCap = "round";
@@ -278,30 +297,67 @@ def get_stage_image_zoom_script(zoom_factor: int = 7) -> str:
         const naturalHeight = Math.max(1, targetImage.naturalHeight || rect.height || 1);
         const boxWidth = Math.max(1, rect.width);
         const boxHeight = Math.max(1, rect.height);
+        const imageAspect = naturalWidth / naturalHeight;
+        const boxAspect = boxWidth / boxHeight;
+        let renderedWidth = boxWidth;
+        let renderedHeight = boxHeight;
+        if (boxAspect > imageAspect) {
+          renderedHeight = boxHeight;
+          renderedWidth = renderedHeight * imageAspect;
+        } else {
+          renderedWidth = boxWidth;
+          renderedHeight = renderedWidth / imageAspect;
+        }
+        const renderedLeft = (boxWidth - renderedWidth) / 2;
+        const renderedTop = (boxHeight - renderedHeight) / 2;
         const localX = event.clientX - rect.left;
         const localY = event.clientY - rect.top;
-        const insideRenderedImage = localX >= 0 && localX <= boxWidth && localY >= 0 && localY <= boxHeight;
+        const imageLocalX = localX - renderedLeft;
+        const imageLocalY = localY - renderedTop;
+        const insideRenderedImage =
+          imageLocalX >= 0 &&
+          imageLocalX <= renderedWidth &&
+          imageLocalY >= 0 &&
+          imageLocalY <= renderedHeight;
         if (!insideRenderedImage) {
           panel.style.display = "none";
           return;
         }
         panel.style.display = "block";
-        const normalizedX = localX / Math.max(1, boxWidth);
-        const normalizedY = localY / Math.max(1, boxHeight);
-        const sxScale = naturalWidth / Math.max(1, boxWidth);
-        const syScale = naturalHeight / Math.max(1, boxHeight);
+        const normalizedX = imageLocalX / Math.max(1, renderedWidth);
+        const normalizedY = imageLocalY / Math.max(1, renderedHeight);
+        const sxScale = naturalWidth / Math.max(1, renderedWidth);
+        const syScale = naturalHeight / Math.max(1, renderedHeight);
         const sample = (radius * 2) / zoom;
         const sampleX = normalizedX * naturalWidth;
         const sampleY = normalizedY * naturalHeight;
         const sampleW = Math.max(2, sample * sxScale);
         const sampleH = Math.max(2, sample * syScale);
-        const maxX = Math.max(0, naturalWidth - sampleW);
-        const maxY = Math.max(0, naturalHeight - sampleH);
-        const cx = Math.max(0, Math.min(sampleX - sampleW / 2, maxX));
-        const cy = Math.max(0, Math.min(sampleY - sampleH / 2, maxY));
+        const srcX = sampleX - sampleW / 2;
+        const srcY = sampleY - sampleH / 2;
+        const srcX0 = Math.max(0, srcX);
+        const srcY0 = Math.max(0, srcY);
+        const srcX1 = Math.min(naturalWidth, srcX + sampleW);
+        const srcY1 = Math.min(naturalHeight, srcY + sampleH);
+        const srcW = Math.max(0, srcX1 - srcX0);
+        const srcH = Math.max(0, srcY1 - srcY0);
         ctx.clearRect(0, 0, panelCanvas.width, panelCanvas.height);
+        ctx.fillStyle = "rgba(0,0,0,0.55)";
+        ctx.fillRect(0, 0, panelCanvas.width, panelCanvas.height);
         ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(targetImage, cx, cy, sampleW, sampleH, 0, 0, panelCanvas.width, panelCanvas.height);
+        if (srcW > 0 && srcH > 0) {
+          ctx.drawImage(
+            targetImage,
+            srcX0,
+            srcY0,
+            srcW,
+            srcH,
+            (Math.max(0, srcX0 - srcX) / sampleW) * panelCanvas.width,
+            (Math.max(0, srcY0 - srcY) / sampleH) * panelCanvas.height,
+            (srcW / sampleW) * panelCanvas.width,
+            (srcH / sampleH) * panelCanvas.height
+          );
+        }
         ctx.strokeStyle = "#00ffff";
         ctx.lineWidth = 1.25;
         ctx.lineCap = "round";

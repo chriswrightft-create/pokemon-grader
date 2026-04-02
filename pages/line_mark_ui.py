@@ -61,6 +61,37 @@ def force_stage_image_zoom(zoom_factor: int = 7) -> None:
     components.html(get_stage_image_zoom_script(zoom_factor=zoom_factor), height=0, width=0)
 
 
+def normalized_color_label(raw_value: object, default_label: str = "Red") -> str:
+    if isinstance(raw_value, str):
+        return raw_value
+    if isinstance(raw_value, tuple) and raw_value:
+        first_value = raw_value[0]
+        if isinstance(first_value, str):
+            return first_value
+    return default_label
+
+
+def inject_line_mark_styles() -> None:
+    st.markdown(
+        """
+        <style>
+        canvas.upper-canvas { cursor: crosshair !important; }
+        div[data-testid="stImage"] img { max-height: 70vh; object-fit: contain; }
+        iframe[srcdoc] svg,
+        iframe[srcdoc] button svg,
+        iframe[srcdoc] [class*="toolbar"] svg {
+          stroke: #f3f4f6 !important;
+          fill: #f3f4f6 !important;
+        }
+        iframe[srcdoc] button {
+          color: #f3f4f6 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_inner_border_controls() -> tuple[int, int, int, int, str, str]:
     st.subheader("Inner Border Nudges")
     st.caption("Zoom target")
@@ -91,7 +122,7 @@ def render_inner_border_controls() -> tuple[int, int, int, int, str, str]:
         bottom_value = _persistent_int_input("Bottom", "line_inner_bottom", "line_inner_bottom_widget")
     with cols[3]:
         left_value = _persistent_int_input("Left", "line_inner_left", "line_inner_left_widget")
-    color_label = st.selectbox("Inner border color", ["Magenta", "Cyan", "Yellow", "Green", "Red", "White"], index=0)
+    color_label = st.selectbox("Inner border color", ["Red", "Green", "Blue", "Black"], index=0)
     zoom_mode = st.session_state.get("line_inner_zoom_mode", "full")
     return top_value, right_value, bottom_value, left_value, color_label, zoom_mode
 
@@ -105,15 +136,17 @@ def _persistent_int_input(label: str, state_key: str, widget_key: str, step: int
 
 
 def render_result_summary(result) -> None:
-    ratio_cols = st.columns(2, gap="small")
-    with ratio_cols[0]:
-        st.metric("Left/Right", f"{result.left_right_ratio[0]}/{result.left_right_ratio[1]}")
-    with ratio_cols[1]:
-        st.metric("Top/Bottom", f"{result.top_bottom_ratio[0]}/{result.top_bottom_ratio[1]}")
-
-    st.write(
-        f"Border widths (px): left={result.left_px}, right={result.right_px}, "
-        f"top={result.top_px}, bottom={result.bottom_px}"
+    st.markdown("<div style='height: 190px;'></div>", unsafe_allow_html=True)
+    st.markdown(
+        (
+            "<div style='text-align:center;'>"
+            f"<div style='font-size:30px;font-weight:700;line-height:1.1;'>"
+            f"L/R {result.left_right_ratio[0]}%/{result.left_right_ratio[1]}%</div>"
+            f"<div style='font-size:30px;font-weight:700;line-height:1.1;margin-top:8px;'>"
+            f"T/B {result.top_bottom_ratio[0]}%/{result.top_bottom_ratio[1]}%</div>"
+            "</div>"
+        ),
+        unsafe_allow_html=True,
     )
     render_grader_badges(result)
 
@@ -140,16 +173,24 @@ def render_grader_badges(result) -> None:
         elif grader_label in pristine_thresholds and _passes_centering_threshold(result, pristine_thresholds[grader_label]):
             display_label = f"{grader_label} PRISTINE"
         badge_markup.append(
-            f'<div style="flex:0 0 112px;width:112px;height:84px;border-radius:10px;display:flex;align-items:center;justify-content:center;'
-            f'padding:8px;background:{badge_color};color:#ffffff;box-sizing:border-box;">'
-            f'<span style="font-size:14px;font-weight:800;line-height:1.0;text-align:center;white-space:normal;">{display_label}</span>'
-            "</div>"
+            (
+                grader_label,
+                f'<div style="width:112px;height:84px;border-radius:10px;display:flex;align-items:center;justify-content:center;'
+                f'padding:8px;background:{badge_color};color:#ffffff;box-sizing:border-box;">'
+                f'<span style="font-size:14px;font-weight:800;line-height:1.0;text-align:center;white-space:normal;">{display_label}</span>'
+                "</div>",
+            )
         )
-    single_row_html = "".join(badge_markup)
+    ordered_badges = sorted(
+        badge_markup,
+        key=lambda item: ["PSA", "TAG", "BGS", "ACE"].index(item[0]) if item[0] in {"PSA", "TAG", "BGS", "ACE"} else 999,
+    )
+    badges_html = "".join(markup for _, markup in ordered_badges)
     st.markdown(
         (
-            '<div style="display:flex;gap:10px;align-items:center;margin:8px 0 4px 0;flex-wrap:nowrap;overflow-x:auto;">'
-            f"{single_row_html}</div>"
+            '<div style="display:grid;grid-template-columns:repeat(2,minmax(112px,1fr));gap:10px;'
+            'justify-items:center;align-items:stretch;margin:12px 0 4px 0;">'
+            f"{badges_html}</div>"
         ),
         unsafe_allow_html=True,
     )
