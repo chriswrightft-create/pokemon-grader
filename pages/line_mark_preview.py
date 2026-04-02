@@ -14,7 +14,9 @@ def border_color(label: str) -> tuple[int, int, int]:
     return mapping[label]
 
 
-def edge_preview(image_rgb: np.ndarray, points: list[tuple[float, float]]) -> np.ndarray:
+def edge_preview(
+    image_rgb: np.ndarray, points: list[tuple[float, float]], line_bgr: tuple[int, int, int] = (0, 255, 255)
+) -> np.ndarray:
     preview = image_rgb.copy()
     overlay = preview.copy()
     edges = [(0, 1), (2, 3), (4, 5), (6, 7)]
@@ -32,16 +34,21 @@ def edge_preview(image_rgb: np.ndarray, points: list[tuple[float, float]]) -> np
             end_point = (int(round(second_point[0] + dx * extend)), int(round(second_point[1] + dy * extend)))
             clipped, clip_start, clip_end = cv2.clipLine((0, 0, image_width, image_height), start_point, end_point)
             if clipped:
-                cv2.line(overlay, clip_start, clip_end, (0, 255, 255), 1, lineType=cv2.LINE_8)
+                cv2.line(overlay, clip_start, clip_end, line_bgr, 1, lineType=cv2.LINE_8)
         else:
-            cv2.line(overlay, first, second, (0, 255, 255), 1, lineType=cv2.LINE_8)
-        cv2.circle(overlay, first, 3, (0, 255, 255), 1, lineType=cv2.LINE_8)
-        cv2.circle(overlay, second, 3, (0, 255, 255), 1, lineType=cv2.LINE_8)
+            cv2.line(overlay, first, second, line_bgr, 1, lineType=cv2.LINE_8)
+        cv2.circle(overlay, first, 3, line_bgr, 1, lineType=cv2.LINE_8)
+        cv2.circle(overlay, second, 3, line_bgr, 1, lineType=cv2.LINE_8)
     return cv2.addWeighted(overlay, 0.45, preview, 0.55, 0.0)
 
 
-def line_stage_zoom_preview(image_rgb: np.ndarray, points: list[tuple[float, float]], padding: int = 5) -> np.ndarray:
-    preview = edge_preview(image_rgb, points)
+def line_stage_zoom_preview(
+    image_rgb: np.ndarray,
+    points: list[tuple[float, float]],
+    padding: int = 5,
+    line_bgr: tuple[int, int, int] = (0, 255, 255),
+) -> np.ndarray:
+    preview = edge_preview(image_rgb, points, line_bgr=line_bgr)
     xs = [point[0] for point in points]
     ys = [point[1] for point in points]
     min_x = max(0, int(min(xs)) - padding)
@@ -116,9 +123,13 @@ def _draw_infinite_pair_lines(image_rgb: np.ndarray, points: list[tuple[float, f
 
 
 def select_zoomed_line_preview(
-    image_rgb: np.ndarray, points: list[tuple[float, float]], zoom_mode: str, padding: int = 5
+    image_rgb: np.ndarray,
+    points: list[tuple[float, float]],
+    zoom_mode: str,
+    padding: int = 5,
+    line_bgr: tuple[int, int, int] = (0, 255, 255),
 ) -> np.ndarray:
-    preview = edge_preview(image_rgb, points)
+    preview = edge_preview(image_rgb, points, line_bgr=line_bgr)
     image_height, image_width = preview.shape[:2]
     if zoom_mode == "top":
         anchor_y = int(round((points[0][1] + points[1][1]) / 2.0))
@@ -130,8 +141,8 @@ def select_zoomed_line_preview(
         min_x = min(first_x, second_x)
         max_x = max(first_x, second_x)
         line_width = max(1, max_x - min_x)
-        middle_left = min_x + int(round(line_width * 0.25))
-        middle_right = max_x - int(round(line_width * 0.25))
+        middle_left = min_x + int(round(line_width * 0.125))
+        middle_right = max_x - int(round(line_width * 0.125))
         zoom_left = max(0, middle_left)
         zoom_right = min(image_width, max(zoom_left + 1, middle_right))
         return preview[zoom_top:zoom_bottom, zoom_left:zoom_right]
@@ -145,8 +156,8 @@ def select_zoomed_line_preview(
         min_x = min(first_x, second_x)
         max_x = max(first_x, second_x)
         line_width = max(1, max_x - min_x)
-        middle_left = min_x + int(round(line_width * 0.25))
-        middle_right = max_x - int(round(line_width * 0.25))
+        middle_left = min_x + int(round(line_width * 0.125))
+        middle_right = max_x - int(round(line_width * 0.125))
         zoom_left = max(0, middle_left)
         zoom_right = min(image_width, max(zoom_left + 1, middle_right))
         return preview[zoom_top:zoom_bottom, zoom_left:zoom_right]
@@ -160,8 +171,8 @@ def select_zoomed_line_preview(
         min_y = min(first_y, second_y)
         max_y = max(first_y, second_y)
         line_height = max(1, max_y - min_y)
-        middle_top = min_y + int(round(line_height * 0.25))
-        middle_bottom = max_y - int(round(line_height * 0.25))
+        middle_top = min_y + int(round(line_height * 0.125))
+        middle_bottom = max_y - int(round(line_height * 0.125))
         zoom_top = max(0, middle_top)
         zoom_bottom = min(image_height, max(zoom_top + 1, middle_bottom))
         return preview[zoom_top:zoom_bottom, zoom_left:zoom_right]
@@ -175,12 +186,12 @@ def select_zoomed_line_preview(
         min_y = min(first_y, second_y)
         max_y = max(first_y, second_y)
         line_height = max(1, max_y - min_y)
-        middle_top = min_y + int(round(line_height * 0.25))
-        middle_bottom = max_y - int(round(line_height * 0.25))
+        middle_top = min_y + int(round(line_height * 0.125))
+        middle_bottom = max_y - int(round(line_height * 0.125))
         zoom_top = max(0, middle_top)
         zoom_bottom = min(image_height, max(zoom_top + 1, middle_bottom))
         return preview[zoom_top:zoom_bottom, zoom_left:zoom_right]
-    return line_stage_zoom_preview(image_rgb, points, padding=padding)
+    return line_stage_zoom_preview(image_rgb, points, padding=padding, line_bgr=line_bgr)
 
 
 def draw_visible_inner_border(

@@ -1,11 +1,10 @@
 import json
 
 
-def get_canvas_enhancement_script(hover_bridge_label: str = "", source_image_url: str = "") -> str:
+def get_canvas_enhancement_script(source_image_url: str = "") -> str:
     script = """
     <script>
     (function applyCanvasEnhancements() {
-      const hoverBridgeLabel = __HOVER_BRIDGE_LABEL__;
       const sourceImageUrl = __SOURCE_IMAGE_URL__;
       const styleId = "line-mark-crosshair-style";
       const css = `
@@ -45,41 +44,6 @@ def get_canvas_enhancement_script(hover_bridge_label: str = "", source_image_url
           const lowerCanvas = doc.querySelector("canvas.lower-canvas");
           // Run zoom logic only in the drawable-canvas iframe context.
           if (!upperCanvas || !lowerCanvas || (lowerCanvas.width || 0) < 200 || (lowerCanvas.height || 0) < 200) return;
-          let lastBridgeValue = "";
-          let lastBridgeAt = 0;
-
-          const pushHoverToBridge = (mouse_x, mouse_y) => {
-            if (!hoverBridgeLabel) return;
-            const now = Date.now();
-            if (now - lastBridgeAt < 80) return;
-            const value = `${Math.round(mouse_x)},${Math.round(mouse_y)}`;
-            if (value === lastBridgeValue) return;
-            lastBridgeValue = value;
-            lastBridgeAt = now;
-            try {
-              const parentDocument = window.parent.document;
-              let bridgeInput = parentDocument.querySelector(`input[aria-label="${hoverBridgeLabel}"]`);
-              if (!bridgeInput) {
-                const labels = Array.from(parentDocument.querySelectorAll("label"));
-                const matchingLabel = labels.find((labelNode) => (labelNode.textContent || "").trim() === hoverBridgeLabel);
-                if (matchingLabel) {
-                  const container = matchingLabel.closest('[data-testid="stTextInput"]');
-                  if (container) bridgeInput = container.querySelector("input");
-                }
-              }
-              if (!bridgeInput) return;
-              const valueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
-              if (valueSetter) {
-                valueSetter.call(bridgeInput, value);
-              } else {
-                bridgeInput.value = value;
-              }
-              bridgeInput.dispatchEvent(new Event("input", { bubbles: true }));
-              bridgeInput.dispatchEvent(new Event("change", { bubbles: true }));
-              bridgeInput.dispatchEvent(new KeyboardEvent("keyup", { bubbles: true, key: "ArrowRight" }));
-            } catch (error) {}
-          };
-
           if (upperCanvas) {
             let lens = doc.getElementById("line-mark-lens");
             if (!lens) {
@@ -309,7 +273,6 @@ def get_canvas_enhancement_script(hover_bridge_label: str = "", source_image_url
               }
               const x = clientX - targetRect.left;
               const y = clientY - targetRect.top;
-              pushHoverToBridge(x, y);
               lens.style.left = `${clientX - radius}px`;
               lens.style.top = `${clientY - radius}px`;
               lens.style.display = "block";
@@ -401,7 +364,4 @@ def get_canvas_enhancement_script(hover_bridge_label: str = "", source_image_url
     })();
     </script>
     """
-    return (
-        script.replace("__HOVER_BRIDGE_LABEL__", json.dumps(hover_bridge_label))
-        .replace("__SOURCE_IMAGE_URL__", json.dumps(source_image_url))
-    )
+    return script.replace("__SOURCE_IMAGE_URL__", json.dumps(source_image_url))

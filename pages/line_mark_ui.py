@@ -49,9 +49,9 @@ def fit_size(width: int, height: int, max_width: int = 900, max_height: int = 70
 
 
 
-def force_canvas_crosshair(hover_bridge_label: str = "", source_image_url: str = "") -> None:
+def force_canvas_crosshair(source_image_url: str = "") -> None:
     components.html(
-        get_canvas_enhancement_script(hover_bridge_label=hover_bridge_label, source_image_url=source_image_url),
+        get_canvas_enhancement_script(source_image_url=source_image_url),
         height=0,
         width=0,
     )

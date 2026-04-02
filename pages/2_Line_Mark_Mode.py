@@ -35,9 +35,17 @@ persistent_int_input = line_mark_state.persistent_int_input
 reset_line_controls = getattr(line_mark_state, "reset_line_controls", lambda: None)
 
 
-st.set_page_config(page_title="Line Mark Mode", layout="wide")
+st.set_page_config(page_title="Line Mark Mode", layout="wide", initial_sidebar_state="collapsed")
 st.title("Line Mark Mode")
-st.write("Click 8 points: top(2), right(2), bottom(2), left(2).")
+st.caption("Click 8 points: top(2), right(2), bottom(2), left(2).")
+upload_col, info_col = st.columns(2, gap="small")
+with upload_col:
+    uploaded_file = st.file_uploader(
+        "Upload card image",
+        type=["png", "jpg", "jpeg", "webp"],
+        key="line_mark_upload",
+        label_visibility="collapsed",
+    )
 st.markdown(
     """
     <style>
@@ -53,17 +61,15 @@ st.markdown(
     iframe[srcdoc] button {
       color: #f3f4f6 !important;
     }
-    input[aria-label="line_hover_xy_bridge"] { display: none !important; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 initialize_line_mark_defaults()
-
-uploaded_file = st.file_uploader("Upload card image", type=["png", "jpg", "jpeg", "webp"], key="line_mark_upload")
 if uploaded_file is None:
-    st.info("Upload an image to begin.")
+    with info_col:
+        st.info("Upload an image to begin.")
     st.stop()
 
 image_bytes = uploaded_file.getvalue()
@@ -84,25 +90,20 @@ canvas_background.save(zoom_buffer, format="PNG")
 zoom_source_url = f"data:image/png;base64,{base64.b64encode(zoom_buffer.getvalue()).decode('ascii')}"
 
 left_col, right_col = st.columns([3, 2])
-with right_col:
-    if st.button("Clear marked points"):
-        reset_line_controls()
-        st.session_state.pop("line_mark_locked_points", None)
-        st.session_state.pop("line_mark_stage", None)
-        st.session_state.pop("line_mark_adjusted_points", None)
-        st.session_state.pop("line_mark_canvas_points", None)
-        st.session_state["line_mark_canvas_nonce"] += 1
-        st.rerun()
-    st.text_input(
-        "line_hover_xy_bridge",
-        key="line_hover_xy_bridge_widget",
-    )
 
+
+def clear_all_marked_points() -> None:
+    reset_line_controls()
+    st.session_state.pop("line_mark_locked_points", None)
+    st.session_state.pop("line_mark_stage", None)
+    st.session_state.pop("line_mark_adjusted_points", None)
+    st.session_state.pop("line_mark_canvas_points", None)
+    st.session_state["line_mark_canvas_nonce"] += 1
+    st.rerun()
 locked_points = st.session_state.get("line_mark_locked_points")
 if locked_points is None:
     with left_col:
         line_utils.force_canvas_crosshair(
-            hover_bridge_label="line_hover_xy_bridge",
             source_image_url=zoom_source_url,
         )
         canvas_result = st_canvas(
@@ -129,24 +130,55 @@ if locked_points is None:
         st.write(f"Points placed: {len(points)} / 8")
         st.caption("Live cursor zoom panel is shown on the canvas area.")
         if len(points) < 8:
+            row_cols = st.columns(2, gap="small")
+            with row_cols[0]:
+                if st.button("Clear marked points"):
+                    clear_all_marked_points()
             st.info("Keep clicking in order: top, right, bottom, left.")
             st.stop()
         if len(points) > 8:
             st.warning("Using first 8 points only.")
             points = points[:8]
-        if st.button("Lock points and continue"):
-            reset_line_controls()
-            st.session_state["line_mark_locked_points"] = points
-            st.session_state["line_mark_stage"] = "lines"
-            st.rerun()
+        row_cols = st.columns(2, gap="small")
+        with row_cols[0]:
+            if st.button("Clear marked points"):
+                clear_all_marked_points()
+        with row_cols[1]:
+            if st.button("Lock points and continue"):
+                reset_line_controls()
+                st.session_state["line_mark_locked_points"] = points
+                st.session_state["line_mark_stage"] = "lines"
+                st.rerun()
         st.stop()
 
 points = list(locked_points)
 stage = st.session_state.get("line_mark_stage", "lines")
+top_line_y = int(st.session_state.get("line_top_y", 0))
+right_line_x = int(st.session_state.get("line_right_x", 0))
+bottom_line_y = int(st.session_state.get("line_bottom_y", 0))
+left_line_x = int(st.session_state.get("line_left_x", 0))
+top_line_angle = float(st.session_state.get("line_top_angle", 0.0))
+right_line_angle = float(st.session_state.get("line_right_angle", 0.0))
+bottom_line_angle = float(st.session_state.get("line_bottom_angle", 0.0))
+left_line_angle = float(st.session_state.get("line_left_angle", 0.0))
+adjusted_points = line_utils.line_controlled_points(
+    points,
+    top_line_y,
+    top_line_angle,
+    right_line_x,
+    right_line_angle,
+    bottom_line_y,
+    bottom_line_angle,
+    left_line_x,
+    left_line_angle,
+)
 with right_col:
     st.write("Points placed: 8 / 8")
-    action_cols = st.columns(2)
+    action_cols = st.columns(3, gap="small")
     with action_cols[0]:
+        if st.button("Clear marked points"):
+            clear_all_marked_points()
+    with action_cols[1]:
         if st.button("Re-mark points"):
             reset_line_controls()
             st.session_state.pop("line_mark_locked_points", None)
@@ -155,8 +187,23 @@ with right_col:
             st.session_state.pop("line_mark_canvas_points", None)
             st.session_state["line_mark_canvas_nonce"] += 1
             st.rerun()
+    with action_cols[2]:
+        if stage == "lines":
+            if st.button("Continue to inner border stage"):
+                st.session_state["line_mark_adjusted_points"] = adjusted_points
+                st.session_state["line_mark_stage"] = "border"
+                st.rerun()
+        else:
+            if st.button("Back to line stage"):
+                st.session_state["line_mark_stage"] = "lines"
+                st.rerun()
     if stage == "lines":
         st.caption("Outer line zoom")
+        outer_line_color_label = st.selectbox(
+            "Outer line color",
+            ["Cyan", "Magenta", "Yellow", "Green", "Red", "White"],
+            key="line_outer_color_label",
+        )
         zoom_cols = st.columns(5)
         with zoom_cols[0]:
             if st.button("Top", key="outer_zoom_top_button"):
@@ -203,37 +250,32 @@ with right_col:
         right_line_angle = float(st.session_state.get("line_right_angle", 0.0))
         bottom_line_angle = float(st.session_state.get("line_bottom_angle", 0.0))
         left_line_angle = float(st.session_state.get("line_left_angle", 0.0))
-
-adjusted_points = line_utils.line_controlled_points(
-    points,
-    top_line_y,
-    top_line_angle,
-    right_line_x,
-    right_line_angle,
-    bottom_line_y,
-    bottom_line_angle,
-    left_line_x,
-    left_line_angle,
-)
+        adjusted_points = line_utils.line_controlled_points(
+            points,
+            top_line_y,
+            top_line_angle,
+            right_line_x,
+            right_line_angle,
+            bottom_line_y,
+            bottom_line_angle,
+            left_line_x,
+            left_line_angle,
+        )
 with right_col:
     if stage == "lines":
-        if st.button("Continue to inner border stage"):
-            st.session_state["line_mark_adjusted_points"] = adjusted_points
-            st.session_state["line_mark_stage"] = "border"
-            st.rerun()
         with left_col:
             st.image(
                 line_utils.select_zoomed_line_preview(
-                    image_rgb, adjusted_points, st.session_state.get("line_outer_zoom_mode", "full"), padding=5
+                    image_rgb,
+                    adjusted_points,
+                    st.session_state.get("line_outer_zoom_mode", "full"),
+                    padding=5,
+                    line_bgr=line_utils.border_color(outer_line_color_label),
                 ),
                 caption="Line stage zoom: outer lines with 5px margin.",
                 use_container_width=True,
             )
         st.stop()
-    with action_cols[1]:
-        if st.button("Back to line stage"):
-            st.session_state["line_mark_stage"] = "lines"
-            st.rerun()
 
 final_points = st.session_state.get("line_mark_adjusted_points", adjusted_points)
 warped_card = line_utils.warp_from_edges(image_bgr, final_points)
