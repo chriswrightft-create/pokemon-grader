@@ -199,10 +199,11 @@ with right_col:
 with right_col:
     if stage == "lines":
         with left_col:
+            outer_zoom_mode = st.session_state.get("line_outer_zoom_mode", "full")
             line_preview_thin = line_utils.select_zoomed_line_preview(
                 image_rgb,
                 adjusted_points,
-                st.session_state.get("line_outer_zoom_mode", "full"),
+                outer_zoom_mode,
                 padding=12,
                 line_bgr=line_utils.border_color(outer_line_color_label),
                 line_thickness=1,
@@ -210,16 +211,19 @@ with right_col:
             line_preview_thick = line_utils.select_zoomed_line_preview(
                 image_rgb,
                 adjusted_points,
-                st.session_state.get("line_outer_zoom_mode", "full"),
+                outer_zoom_mode,
                 padding=12,
                 line_bgr=line_utils.border_color(outer_line_color_label),
                 line_thickness=5,
                 render_scale=2,
             )
-            st.image(line_preview_thin, caption="Line stage zoom: outer lines with 12px margin.", width="content")
+            use_thin_default = outer_zoom_mode != "full"
+            default_line_image = line_preview_thin if use_thin_default else line_preview_thin
+            hover_thick_image = line_preview_thin if use_thin_default else line_preview_thick
+            st.image(default_line_image, caption="Line stage zoom: outer lines with 12px margin.", width="content")
             line_utils.force_stage_hover_line_swap(
                 thin_image_url=_rgb_array_to_data_url(line_preview_thin),
-                thick_image_url=_rgb_array_to_data_url(line_preview_thick),
+                thick_image_url=_rgb_array_to_data_url(hover_thick_image),
             )
             line_utils.force_stage_image_zoom(zoom_factor=zoom_factor_value)
         st.stop()
@@ -268,14 +272,17 @@ display_visual_thick = line_utils.select_zoomed_inner_preview(
 with left_col:
     stage_image_col, stage_summary_col = st.columns([4, 2], gap="small")
     with stage_image_col:
+        use_thin_default = zoom_mode != "full"
+        default_inner_image = display_visual_thin if use_thin_default else display_visual_thin
+        hover_inner_image = display_visual_thin if use_thin_default else display_visual_thick
         st.image(
-            display_visual_thin,
+            default_inner_image,
             caption="Full card by default. Top/Bottom inputs zoom 50% width, Left/Right inputs zoom 50% height.",
             width="content",
         )
         line_utils.force_stage_hover_line_swap(
             thin_image_url=_rgb_array_to_data_url(display_visual_thin),
-            thick_image_url=_rgb_array_to_data_url(display_visual_thick),
+            thick_image_url=_rgb_array_to_data_url(hover_inner_image),
         )
         line_utils.force_stage_image_zoom(zoom_factor=zoom_factor_value)
     with stage_summary_col:
