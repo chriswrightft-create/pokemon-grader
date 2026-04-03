@@ -216,7 +216,7 @@ with right_col:
                 line_thickness=5,
                 render_scale=2,
             )
-            st.image(line_preview_thick, caption="Line stage zoom: outer lines with 12px margin.", width="content")
+            st.image(line_preview_thin, caption="Line stage zoom: outer lines with 12px margin.", width="content")
             line_utils.force_stage_hover_line_swap(
                 thin_image_url=_rgb_array_to_data_url(line_preview_thin),
                 thick_image_url=_rgb_array_to_data_url(line_preview_thick),
@@ -269,7 +269,7 @@ with left_col:
     stage_image_col, stage_summary_col = st.columns([4, 2], gap="small")
     with stage_image_col:
         st.image(
-            display_visual_thick,
+            display_visual_thin,
             caption="Full card by default. Top/Bottom inputs zoom 50% width, Left/Right inputs zoom 50% height.",
             width="content",
         )
