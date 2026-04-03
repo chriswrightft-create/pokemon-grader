@@ -265,6 +265,10 @@ def get_stage_image_zoom_script(zoom_factor: int = 7) -> str:
       const radius = 30;
 
       const drawAt = (event) => {
+        if (!event || typeof event.clientX !== "number" || typeof event.clientY !== "number") {
+          panel.style.display = "none";
+          return;
+        }
         const images = Array.from(window.parent.document.querySelectorAll('div[data-testid="stImage"] img'));
         if (!images.length) {
           panel.style.display = "none";
@@ -279,6 +283,17 @@ def get_stage_image_zoom_script(zoom_factor: int = 7) -> str:
           return;
         }
         const rect = targetImage.getBoundingClientRect();
+        if (!targetImage.complete || (typeof targetImage.naturalWidth === "number" && targetImage.naturalWidth <= 0)) {
+          const pendingPointer = window.parent.__lineMarkLastPointer;
+          const handleLoaded = () => {
+            const pointer = window.parent.__lineMarkLastPointer || pendingPointer;
+            if (pointer && typeof pointer.x === "number" && typeof pointer.y === "number") {
+              drawAt({ clientX: pointer.x, clientY: pointer.y });
+            }
+          };
+          targetImage.addEventListener("load", handleLoaded, { once: true });
+          return;
+        }
         const clearButton = Array.from(window.parent.document.querySelectorAll("button")).find(
           (button) => (button.textContent || "").trim().toLowerCase() === "clear marked points"
         );
@@ -372,8 +387,45 @@ def get_stage_image_zoom_script(zoom_factor: int = 7) -> str:
 
       const oldMove = window.parent.__lineMarkStageMove;
       if (oldMove) window.parent.document.removeEventListener("mousemove", oldMove, true);
-      window.parent.__lineMarkStageMove = drawAt;
-      window.parent.document.addEventListener("mousemove", drawAt, true);
+      const oldPointerTracker = window.parent.__lineMarkPointerTracker;
+      if (oldPointerTracker) {
+        window.parent.document.removeEventListener("mousemove", oldPointerTracker, true);
+      }
+      window.parent.__lineMarkPointerTracker = (event) => {
+        window.parent.__lineMarkLastPointer = { x: event.clientX, y: event.clientY };
+      };
+      window.parent.document.addEventListener("mousemove", window.parent.__lineMarkPointerTracker, true);
+      window.parent.__lineMarkStageMove = (event) => {
+        window.parent.__lineMarkLastPointer = { x: event.clientX, y: event.clientY };
+        drawAt(event);
+      };
+      window.parent.document.addEventListener("mousemove", window.parent.__lineMarkStageMove, true);
+      const redrawFromLastPointer = () => {
+        const pointer = window.parent.__lineMarkLastPointer;
+        if (!pointer || typeof pointer.x !== "number" || typeof pointer.y !== "number") return;
+        drawAt({ clientX: pointer.x, clientY: pointer.y });
+      };
+      redrawFromLastPointer();
+      // Streamlit image nodes can update asynchronously; retry a few times
+      // so zoom refreshes without requiring mouse movement.
+      [40, 120, 240, 420].forEach((delayMs) => {
+        window.setTimeout(redrawFromLastPointer, delayMs);
+      });
+      const existingLoadHandlers = window.parent.__lineMarkZoomImageLoadHandlers;
+      if (Array.isArray(existingLoadHandlers)) {
+        existingLoadHandlers.forEach((item) => {
+          try {
+            item.image.removeEventListener("load", item.handler, true);
+          } catch (error) {}
+        });
+      }
+      window.parent.__lineMarkZoomImageLoadHandlers = [];
+      const images = Array.from(window.parent.document.querySelectorAll('div[data-testid="stImage"] img'));
+      images.forEach((imageNode) => {
+        const handler = () => redrawFromLastPointer();
+        imageNode.addEventListener("load", handler, true);
+        window.parent.__lineMarkZoomImageLoadHandlers.push({ image: imageNode, handler });
+      });
     })();
     </script>
     """.replace("__ZOOM_FACTOR__", str(int(zoom_factor)))
@@ -388,7 +440,21 @@ def get_stage_hover_swap_script(thin_image_url: str, thick_image_url: str) -> st
       if (!thinUrl || !thickUrl) return;
       const images = Array.from(window.parent.document.querySelectorAll('div[data-testid="stImage"] img'));
       if (!images.length) return;
-      const target = images[0];
+      const pointer = window.parent.__lineMarkLastPointer;
+      const pickTargetImage = () => {
+        if (pointer) {
+          const underPointer = images.find((candidate) => {
+            const rect = candidate.getBoundingClientRect();
+            return pointer.x >= rect.left && pointer.x <= rect.right && pointer.y >= rect.top && pointer.y <= rect.bottom;
+          });
+          if (underPointer) return underPointer;
+        }
+        // Fallback to largest rendered image so we prefer the stage image over small previews/icons.
+        return images
+          .slice()
+          .sort((left, right) => (right.clientWidth * right.clientHeight) - (left.clientWidth * left.clientHeight))[0];
+      };
+      const target = pickTargetImage();
       if (!target) return;
       if (window.parent.__lineMarkHoverSwapEnter) {
         target.removeEventListener("mouseenter", window.parent.__lineMarkHoverSwapEnter, true);
@@ -401,8 +467,8 @@ def get_stage_hover_swap_script(thin_image_url: str, thick_image_url: str) -> st
         return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
       };
       const applyFromPointer = () => {
-        const pointer = window.parent.__lineMarkLastPointer;
-        if (pointer && isInsideTarget(pointer.x, pointer.y)) {
+        const currentPointer = window.parent.__lineMarkLastPointer;
+        if (currentPointer && isInsideTarget(currentPointer.x, currentPointer.y)) {
           target.src = thinUrl;
           return;
         }
