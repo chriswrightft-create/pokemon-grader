@@ -64,3 +64,43 @@ def reset_line_controls() -> None:
     ]
     for key in widget_keys:
         st.session_state.pop(key, None)
+
+
+def reset_line_mark_session_state() -> None:
+    state_keys_to_remove = [
+        "line_mark_locked_points",
+        "line_mark_stage",
+        "line_mark_adjusted_points",
+        "line_mark_canvas_points",
+        "line_mark_active_upload_token",
+        "line_warp_cache_key",
+        "line_warp_cache_card",
+        "line_outer_color_label",
+        "line_inner_zoom_mode",
+        "line_outer_zoom_mode",
+        "line_inner_top",
+        "line_inner_right",
+        "line_inner_bottom",
+        "line_inner_left",
+        "line_zoom_factor",
+    ]
+    for key in state_keys_to_remove:
+        st.session_state.pop(key, None)
+    widget_keys_to_remove = [
+        "line_top_y_widget",
+        "line_right_x_widget",
+        "line_bottom_y_widget",
+        "line_left_x_widget",
+        "line_top_angle_widget",
+        "line_right_angle_widget",
+        "line_bottom_angle_widget",
+        "line_left_angle_widget",
+        "line_inner_top_widget",
+        "line_inner_right_widget",
+        "line_inner_bottom_widget",
+        "line_inner_left_widget",
+    ]
+    for key in widget_keys_to_remove:
+        st.session_state.pop(key, None)
+    reset_line_controls()
+    st.session_state["line_mark_canvas_nonce"] = int(st.session_state.get("line_mark_canvas_nonce", 0)) + 1

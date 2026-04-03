@@ -1,16 +1,26 @@
 import json
+from typing import Optional
 
 
-def get_canvas_enhancement_script(source_image_url: str = "", zoom_factor: int = 4) -> str:
+def get_canvas_enhancement_script(
+    source_image_url: str = "",
+    zoom_factor: int = 4,
+    points: Optional[list[tuple[float, float]]] = None,
+    move_radius_px: float = 10.0,
+) -> str:
     script = """
     <script>
     (function applyCanvasEnhancements() {
       const sourceImageUrl = __SOURCE_IMAGE_URL__;
       const zoomFactor = __ZOOM_FACTOR__;
+      const pointList = __POINTS__;
+      const moveRadiusPx = __MOVE_RADIUS_PX__;
+      const crosshairCursor = "crosshair";
       window.parent.__lineMarkZoomMode = "canvas";
       const styleId = "line-mark-crosshair-style";
       const css = `
-        html, body, canvas, .upper-canvas, .lower-canvas { cursor: crosshair !important; }
+        html, body { cursor: default; }
+        canvas, .upper-canvas, .lower-canvas, .canvas-container, .canvas-container * { cursor: none !important; }
         button, [role="button"] { color: #f3f4f6 !important; opacity: 1 !important; }
         svg, svg * { stroke: #f3f4f6 !important; fill: #f3f4f6 !important; opacity: 1 !important; }
         img { filter: invert(1) brightness(1.35) contrast(1.1) !important; opacity: 1 !important; }
@@ -39,6 +49,19 @@ def get_canvas_enhancement_script(source_image_url: str = "", zoom_factor: int =
 
           const upperCanvas = doc.querySelector("canvas.upper-canvas");
           if (!upperCanvas) return;
+          const lowerCanvas = doc.querySelector("canvas.lower-canvas");
+          const applyCursorStyle = (cursorValue) => {
+            const resolvedCursor = cursorValue === "default" ? "default" : "none";
+            const upperParent = upperCanvas ? upperCanvas.parentElement : null;
+            const lowerParent = lowerCanvas ? lowerCanvas.parentElement : null;
+            const nodes = [upperCanvas, lowerCanvas, upperParent, lowerParent].filter(Boolean);
+            nodes.forEach((node) => {
+              try {
+                node.style.setProperty("cursor", resolvedCursor, "important");
+              } catch (error) {}
+            });
+          };
+          applyCursorStyle("crosshair");
 
           let lens = doc.getElementById("line-mark-lens");
           if (!lens) {
@@ -54,6 +77,42 @@ def get_canvas_enhancement_script(source_image_url: str = "", zoom_factor: int =
             lens.style.boxShadow = "0 0 0 1px rgba(0,0,0,0.7)";
             lens.style.display = "none";
             doc.body.appendChild(lens);
+          }
+          let cursorOverlay = doc.getElementById("line-mark-cursor-overlay");
+          let cursorOverlayHorizontal = null;
+          let cursorOverlayVertical = null;
+          if (!cursorOverlay) {
+            cursorOverlay = doc.createElement("div");
+            cursorOverlay.id = "line-mark-cursor-overlay";
+            cursorOverlay.style.position = "fixed";
+            cursorOverlay.style.pointerEvents = "none";
+            cursorOverlay.style.zIndex = "2147483647";
+            cursorOverlay.style.width = "24px";
+            cursorOverlay.style.height = "24px";
+            cursorOverlay.style.display = "none";
+            cursorOverlay.style.opacity = "1";
+            cursorOverlay.style.transform = "scale(1)";
+            cursorOverlay.style.transformOrigin = "12px 12px";
+            cursorOverlayHorizontal = doc.createElement("div");
+            cursorOverlayHorizontal.style.position = "absolute";
+            cursorOverlayHorizontal.style.left = "4px";
+            cursorOverlayHorizontal.style.top = "12px";
+            cursorOverlayHorizontal.style.width = "16px";
+            cursorOverlayHorizontal.style.height = "1px";
+            cursorOverlayHorizontal.style.background = "rgb(0,255,255)";
+            cursorOverlayVertical = doc.createElement("div");
+            cursorOverlayVertical.style.position = "absolute";
+            cursorOverlayVertical.style.left = "12px";
+            cursorOverlayVertical.style.top = "4px";
+            cursorOverlayVertical.style.width = "1px";
+            cursorOverlayVertical.style.height = "16px";
+            cursorOverlayVertical.style.background = "rgb(0,255,255)";
+            cursorOverlay.appendChild(cursorOverlayHorizontal);
+            cursorOverlay.appendChild(cursorOverlayVertical);
+            doc.body.appendChild(cursorOverlay);
+          } else {
+            cursorOverlayHorizontal = cursorOverlay.children && cursorOverlay.children.length > 0 ? cursorOverlay.children[0] : null;
+            cursorOverlayVertical = cursorOverlay.children && cursorOverlay.children.length > 1 ? cursorOverlay.children[1] : null;
           }
 
           let sidePanel = doc.getElementById("line-mark-side-zoom");
@@ -99,9 +158,37 @@ def get_canvas_enhancement_script(source_image_url: str = "", zoom_factor: int =
             const prevMove = window.__lineMarkMoveHandler;
             const prevDown = window.__lineMarkDownHandler;
             const prevUp = window.__lineMarkUpHandler;
+            const prevEnter = window.__lineMarkCanvasEnterHandler;
+            const prevLeave = window.__lineMarkCanvasLeaveHandler;
             if (prevMove) doc.removeEventListener("mousemove", prevMove, true);
             if (prevDown) doc.removeEventListener("mousedown", prevDown, true);
             if (prevUp) doc.removeEventListener("mouseup", prevUp, true);
+            if (prevEnter) {
+              upperCanvas.removeEventListener("mouseenter", prevEnter, true);
+              if (lowerCanvas) lowerCanvas.removeEventListener("mouseenter", prevEnter, true);
+            }
+            if (prevLeave) {
+              upperCanvas.removeEventListener("mouseleave", prevLeave, true);
+              if (lowerCanvas) lowerCanvas.removeEventListener("mouseleave", prevLeave, true);
+            }
+
+            const updateCursor = (clientX, clientY, targetRect, insideCanvas) => {
+              const setCursor = (cursorValue) => applyCursorStyle(cursorValue);
+              if (!insideCanvas) {
+                setCursor("default");
+                return false;
+              }
+              const canvasX = clientX - targetRect.left;
+              const canvasY = clientY - targetRect.top;
+              const nearExistingPoint = Array.isArray(pointList) && pointList.some((pointNode) => {
+                if (!Array.isArray(pointNode) || pointNode.length < 2) return false;
+                const dx = canvasX - Number(pointNode[0] || 0);
+                const dy = canvasY - Number(pointNode[1] || 0);
+                return Math.hypot(dx, dy) <= moveRadiusPx;
+              });
+              setCursor(nearExistingPoint ? "move" : "crosshair");
+              return nearExistingPoint;
+            };
 
             const drawAt = (clientX, clientY) => {
               const targetRect = upperCanvas.getBoundingClientRect();
@@ -113,11 +200,21 @@ def get_canvas_enhancement_script(source_image_url: str = "", zoom_factor: int =
                 clientX <= targetRect.right &&
                 clientY >= targetRect.top &&
                 clientY <= targetRect.bottom;
+              const nearExistingPoint = updateCursor(clientX, clientY, targetRect, inside);
               if (!inside) {
                 lens.style.display = "none";
                 sidePanel.style.display = "none";
+                cursorOverlay.style.display = "none";
                 return;
               }
+              cursorOverlay.style.left = `${clientX - 12}px`;
+              cursorOverlay.style.top = `${clientY - 12}px`;
+              const overlayColor = "rgb(0,255,255)";
+              if (cursorOverlayHorizontal) cursorOverlayHorizontal.style.background = overlayColor;
+              if (cursorOverlayVertical) cursorOverlayVertical.style.background = overlayColor;
+              cursorOverlay.style.opacity = nearExistingPoint ? "0.25" : "1";
+              cursorOverlay.style.transform = "scale(1)";
+              cursorOverlay.style.display = "block";
 
               const sxScale = providedImage.naturalWidth / Math.max(1, targetRect.width);
               const syScale = providedImage.naturalHeight / Math.max(1, targetRect.height);
@@ -142,26 +239,10 @@ def get_canvas_enhancement_script(source_image_url: str = "", zoom_factor: int =
 
               lens.style.left = `${clientX - radius}px`;
               lens.style.top = `${clientY - radius}px`;
-              lens.style.display = "block";
+              lens.style.display = "none";
               sidePanel.style.display = "block";
 
               lensContext.clearRect(0, 0, lens.width, lens.height);
-              lensContext.fillStyle = "rgba(0,0,0,0.55)";
-              lensContext.fillRect(0, 0, lens.width, lens.height);
-              lensContext.save();
-              lensContext.beginPath();
-              lensContext.arc(radius, radius, radius - 1, 0, Math.PI * 2);
-              lensContext.clip();
-              lensContext.imageSmoothingEnabled = false;
-              if (srcW > 0 && srcH > 0 && dstW > 0 && dstH > 0) {
-                lensContext.drawImage(providedImage, srcX0, srcY0, srcW, srcH, dstX, dstY, dstW, dstH);
-              }
-              lensContext.restore();
-              lensContext.strokeStyle = "#00ffff";
-              lensContext.lineWidth = 1;
-              lensContext.beginPath();
-              lensContext.arc(radius, radius, radius - 1, 0, Math.PI * 2);
-              lensContext.stroke();
 
               sideContext.clearRect(0, 0, sidePanelCanvas.width, sidePanelCanvas.height);
               sideContext.fillStyle = "rgba(0,0,0,0.55)";
@@ -181,7 +262,7 @@ def get_canvas_enhancement_script(source_image_url: str = "", zoom_factor: int =
                 );
               }
               sideContext.strokeStyle = "#00ffff";
-              sideContext.lineWidth = 1.25;
+              sideContext.lineWidth = 1;
               sideContext.lineCap = "round";
               sideContext.lineJoin = "round";
               sideContext.beginPath();
@@ -195,9 +276,23 @@ def get_canvas_enhancement_script(source_image_url: str = "", zoom_factor: int =
             window.__lineMarkMoveHandler = (event) => drawAt(event.clientX, event.clientY);
             window.__lineMarkDownHandler = (event) => drawAt(event.clientX, event.clientY);
             window.__lineMarkUpHandler = (event) => drawAt(event.clientX, event.clientY);
+            window.__lineMarkCanvasEnterHandler = () => {
+              applyCursorStyle("crosshair");
+            };
+            window.__lineMarkCanvasLeaveHandler = () => {
+              applyCursorStyle("default");
+              cursorOverlay.style.display = "none";
+            };
             doc.addEventListener("mousemove", window.__lineMarkMoveHandler, true);
             doc.addEventListener("mousedown", window.__lineMarkDownHandler, true);
             doc.addEventListener("mouseup", window.__lineMarkUpHandler, true);
+            upperCanvas.addEventListener("mouseenter", window.__lineMarkCanvasEnterHandler, true);
+            upperCanvas.addEventListener("mouseleave", window.__lineMarkCanvasLeaveHandler, true);
+            if (lowerCanvas) {
+              lowerCanvas.addEventListener("mouseenter", window.__lineMarkCanvasEnterHandler, true);
+              lowerCanvas.addEventListener("mouseleave", window.__lineMarkCanvasLeaveHandler, true);
+            }
+            // Custom drag/drop support intentionally disabled.
           };
         } catch (error) {}
       });
@@ -208,6 +303,8 @@ def get_canvas_enhancement_script(source_image_url: str = "", zoom_factor: int =
     return (
         script.replace("__SOURCE_IMAGE_URL__", json.dumps(source_image_url))
         .replace("__ZOOM_FACTOR__", str(int(zoom_factor)))
+        .replace("__POINTS__", json.dumps(points or []))
+        .replace("__MOVE_RADIUS_PX__", json.dumps(float(move_radius_px)))
     )
 
 
@@ -374,7 +471,7 @@ def get_stage_image_zoom_script(zoom_factor: int = 7) -> str:
           );
         }
         ctx.strokeStyle = "#00ffff";
-        ctx.lineWidth = 1.25;
+        ctx.lineWidth = 1;
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
         ctx.beginPath();

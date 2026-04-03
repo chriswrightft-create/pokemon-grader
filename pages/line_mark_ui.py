@@ -2,6 +2,7 @@ from typing import Optional
 
 import streamlit as st
 import streamlit.components.v1 as components
+from typing import Optional
 import streamlit.elements.image as streamlit_image
 from pages.line_mark_canvas_js import get_canvas_enhancement_script, get_stage_hover_swap_script, get_stage_image_zoom_script
 from pages.line_mark_preview import border_color, draw_visible_inner_border, edge_preview, line_stage_zoom_preview, select_zoomed_inner_preview
@@ -36,7 +37,21 @@ def point_list_from_canvas(canvas_json: Optional[dict]) -> list[tuple[float, flo
         radius = float(item.get("radius", 0.0))
         left = float(item.get("left", 0.0))
         top = float(item.get("top", 0.0))
-        points.append((left + radius, top + radius))
+        origin_x = str(item.get("originX", "left")).lower()
+        origin_y = str(item.get("originY", "top")).lower()
+        if origin_x == "center":
+            center_x = left
+        elif origin_x == "right":
+            center_x = left - radius
+        else:
+            center_x = left + radius
+        if origin_y == "center":
+            center_y = top
+        elif origin_y == "bottom":
+            center_y = top - radius
+        else:
+            center_y = top + radius
+        points.append((center_x, center_y))
     return points
 
 
@@ -49,9 +64,19 @@ def fit_size(width: int, height: int, max_width: int = 900, max_height: int = 70
 
 
 
-def force_canvas_crosshair(source_image_url: str = "", zoom_factor: int = 4) -> None:
+def force_canvas_crosshair(
+    source_image_url: str = "",
+    zoom_factor: int = 4,
+    points: Optional[list[tuple[float, float]]] = None,
+    move_radius_px: float = 10.0,
+) -> None:
     components.html(
-        get_canvas_enhancement_script(source_image_url=source_image_url, zoom_factor=zoom_factor),
+        get_canvas_enhancement_script(
+            source_image_url=source_image_url,
+            zoom_factor=zoom_factor,
+            points=points or [],
+            move_radius_px=move_radius_px,
+        ),
         height=0,
         width=0,
     )

@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import io
 import importlib
 import sys
@@ -17,6 +18,7 @@ if str(ROOT_DIR) not in sys.path:
 
 from border_measurement import calculate_ratios_from_bounds
 from pages import line_mark_line_stage as line_stage_ui
+from pages import line_mark_point_stage as point_stage
 from pages import line_mark_state as line_mark_state
 from pages import line_mark_utils as line_utils
 from pages.line_mark_warp import get_cached_warped_card
@@ -30,6 +32,10 @@ try:
 except ImportError:
     pass
 try:
+    point_stage = importlib.reload(point_stage)
+except ImportError:
+    pass
+try:
     line_utils = importlib.reload(line_utils)
 except ImportError:
     pass
@@ -39,6 +45,7 @@ initialize_line_mark_defaults = line_mark_state.initialize_line_mark_defaults
 persistent_float_input = line_mark_state.persistent_float_input
 persistent_int_input = line_mark_state.persistent_int_input
 reset_line_controls = getattr(line_mark_state, "reset_line_controls", lambda: None)
+reset_line_mark_session_state = getattr(line_mark_state, "reset_line_mark_session_state", lambda: None)
 
 
 st.set_page_config(page_title="Line Mark Mode", layout="wide", initial_sidebar_state="collapsed")
@@ -51,11 +58,18 @@ line_utils.inject_line_mark_styles()
 
 initialize_line_mark_defaults()
 if uploaded_file is None:
+    if st.session_state.get("line_mark_active_upload_token") is not None:
+        reset_line_mark_session_state()
     with info_col:
         st.info("Upload an image to begin.")
     st.stop()
 
 image_bytes = uploaded_file.getvalue()
+upload_token = (uploaded_file.name, len(image_bytes), hashlib.sha1(image_bytes).hexdigest())
+if st.session_state.get("line_mark_active_upload_token") != upload_token:
+    reset_line_mark_session_state()
+    st.session_state["line_mark_active_upload_token"] = upload_token
+    st.rerun()
 image_bgr = cv2.imdecode(np.frombuffer(image_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
 if image_bgr is None:
     st.error("Unable to decode uploaded image.")
@@ -66,6 +80,7 @@ pil_image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
 canvas_width, canvas_height, canvas_scale = line_utils.fit_size(pil_image.width, pil_image.height)
 canvas_image = pil_image.resize((canvas_width, canvas_height), Image.Resampling.LANCZOS)
 canvas_points = st.session_state.get("line_mark_canvas_points", [])
+canvas_drawing_mode = "point"
 canvas_preview = line_utils.draw_cross_markers(np.array(canvas_image), canvas_points) if canvas_points else np.array(canvas_image)
 canvas_background = Image.fromarray(canvas_preview)
 zoom_buffer = io.BytesIO()
@@ -89,23 +104,28 @@ def clear_all_marked_points() -> None:
     st.rerun()
 locked_points = st.session_state.get("line_mark_locked_points")
 if locked_points is None:
+    previous_points = st.session_state.get("line_mark_canvas_points", [])
     with left_col:
-        line_utils.force_canvas_crosshair(source_image_url=zoom_source_url, zoom_factor=zoom_factor_value)
+        line_utils.force_canvas_crosshair(
+            source_image_url=zoom_source_url,
+            zoom_factor=zoom_factor_value,
+            points=previous_points,
+            move_radius_px=20.0,
+        )
         canvas_result = st_canvas(
             fill_color="rgba(0, 0, 0, 0)",
             stroke_width=1,
             stroke_color="#00FFFF",
             background_image=canvas_background,
-            update_streamlit=True,
-            drawing_mode="point",
+            update_streamlit=len(previous_points) < 12,
+            drawing_mode=canvas_drawing_mode,
             point_display_radius=0,
             height=canvas_height,
             width=canvas_width,
             key=f"line_mark_canvas_{st.session_state['line_mark_canvas_nonce']}",
         )
-
-    points = line_utils.point_list_from_canvas(canvas_result.json_data)
-    previous_points = st.session_state.get("line_mark_canvas_points", [])
+        points = line_utils.point_list_from_canvas(canvas_result.json_data)
+        points = point_stage.get_filtered_points(points, previous_points)
     st.session_state["line_mark_canvas_points"] = points
     if points != previous_points:
         st.rerun()
@@ -123,9 +143,6 @@ if locked_points is None:
             st.caption("Quickstart")
             st.image("assets/quickstart.gif", use_container_width=True)
             st.stop()
-        if len(points) > 12:
-            st.warning("Using first 12 points only.")
-            points = points[:12]
         row_cols = st.columns(2, gap="small")
         with row_cols[0]:
             if st.button("Clear marked points"):

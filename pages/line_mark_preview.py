@@ -52,8 +52,6 @@ def edge_preview(
             else:
                 cv2.line(preview, first, second, (0, 0, 0), draw_thickness, lineType=cv2.LINE_AA)
                 cv2.line(preview, first, second, line_bgr, draw_thickness, lineType=cv2.LINE_AA)
-            cv2.circle(preview, first, max(3, scale), line_bgr, 1, lineType=cv2.LINE_AA)
-            cv2.circle(preview, second, max(3, scale), line_bgr, 1, lineType=cv2.LINE_AA)
             continue
         first_index, middle_index, second_index = indexes
         first_point = scaled_points[first_index]
@@ -67,9 +65,6 @@ def edge_preview(
             curve_int = np.array([(int(round(x)), int(round(y))) for x, y in curve_points], dtype=np.int32).reshape((-1, 1, 2))
             cv2.polylines(preview, [curve_int], False, (0, 0, 0), draw_thickness, lineType=cv2.LINE_AA)
             cv2.polylines(preview, [curve_int], False, line_bgr, draw_thickness, lineType=cv2.LINE_AA)
-        cv2.circle(preview, first, max(3, scale), line_bgr, 1, lineType=cv2.LINE_AA)
-        cv2.circle(preview, middle, max(3, scale), line_bgr, 1, lineType=cv2.LINE_AA)
-        cv2.circle(preview, second, max(3, scale), line_bgr, 1, lineType=cv2.LINE_AA)
     if scale > 1:
         original_height, original_width = image_rgb.shape[:2]
         return cv2.resize(preview, (original_width, original_height), interpolation=cv2.INTER_AREA)
@@ -102,9 +97,7 @@ def draw_cross_markers(image_rgb: np.ndarray, points: list[tuple[float, float]],
     for x_value, y_value in points:
         center_x = int(round(x_value))
         center_y = int(round(y_value))
-        # High-contrast crosshair: dark underlay + cyan stroke.
-        cv2.line(preview, (center_x - size, center_y), (center_x + size, center_y), (0, 0, 0), 3, lineType=cv2.LINE_AA)
-        cv2.line(preview, (center_x, center_y - size), (center_x, center_y + size), (0, 0, 0), 3, lineType=cv2.LINE_AA)
+        # Render point marker crosshair with exact 1px stroke.
         cv2.line(preview, (center_x - size, center_y), (center_x + size, center_y), (0, 255, 255), 1, lineType=cv2.LINE_AA)
         cv2.line(preview, (center_x, center_y - size), (center_x, center_y + size), (0, 255, 255), 1, lineType=cv2.LINE_AA)
     return preview
