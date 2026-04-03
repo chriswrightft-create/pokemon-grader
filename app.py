@@ -77,6 +77,12 @@ with right_col:
     zoom_factor_value = int(st.number_input("Zoom magnification", min_value=2, max_value=12, value=5, step=1, key="line_zoom_factor"))
 
 
+def _rgb_array_to_data_url(image_array: np.ndarray) -> str:
+    image_buffer = io.BytesIO()
+    Image.fromarray(image_array).save(image_buffer, format="PNG")
+    return f"data:image/png;base64,{base64.b64encode(image_buffer.getvalue()).decode('ascii')}"
+
+
 def clear_all_marked_points() -> None:
     reset_line_controls()
     line_stage_ui.clear_marking_state()
@@ -193,18 +199,29 @@ with right_col:
 with right_col:
     if stage == "lines":
         with left_col:
-            line_utils.force_stage_image_zoom(zoom_factor=zoom_factor_value)
-            st.image(
-                line_utils.select_zoomed_line_preview(
-                    image_rgb,
-                    adjusted_points,
-                    st.session_state.get("line_outer_zoom_mode", "full"),
-                    padding=12,
-                    line_bgr=line_utils.border_color(outer_line_color_label),
-                ),
-                caption="Line stage zoom: outer lines with 12px margin.",
-                width="content",
+            line_preview_thin = line_utils.select_zoomed_line_preview(
+                image_rgb,
+                adjusted_points,
+                st.session_state.get("line_outer_zoom_mode", "full"),
+                padding=12,
+                line_bgr=line_utils.border_color(outer_line_color_label),
+                line_thickness=1,
             )
+            line_preview_thick = line_utils.select_zoomed_line_preview(
+                image_rgb,
+                adjusted_points,
+                st.session_state.get("line_outer_zoom_mode", "full"),
+                padding=12,
+                line_bgr=line_utils.border_color(outer_line_color_label),
+                line_thickness=5,
+                render_scale=2,
+            )
+            st.image(line_preview_thick, caption="Line stage zoom: outer lines with 12px margin.", width="content")
+            line_utils.force_stage_hover_line_swap(
+                thin_image_url=_rgb_array_to_data_url(line_preview_thin),
+                thick_image_url=_rgb_array_to_data_url(line_preview_thick),
+            )
+            line_utils.force_stage_image_zoom(zoom_factor=zoom_factor_value)
         st.stop()
 
 final_points = st.session_state.get("line_mark_adjusted_points", adjusted_points)
@@ -228,21 +245,38 @@ inner_bottom = max(inner_top + 1, min(base_bottom - nudge_bottom, card_height - 
 
 result = calculate_ratios_from_bounds(card_width, card_height, inner_left, inner_right, inner_top, inner_bottom)
 visualized = cv2.cvtColor(warped_card, cv2.COLOR_BGR2RGB)
-visualized = line_utils.draw_visible_inner_border(
-    visualized, inner_left, inner_top, inner_right, inner_bottom, line_utils.border_color(color_label)
+visualized_thin = line_utils.draw_visible_inner_border(
+    visualized, inner_left, inner_top, inner_right, inner_bottom, line_utils.border_color(color_label), border_thickness=1
 )
-display_visual = line_utils.select_zoomed_inner_preview(
-    visualized, card_width, card_height, inner_left, inner_right, inner_top, inner_bottom, zoom_mode
+visualized_thick = line_utils.draw_visible_inner_border(
+    visualized,
+    inner_left,
+    inner_top,
+    inner_right,
+    inner_bottom,
+    line_utils.border_color(color_label),
+    border_thickness=5,
+    render_scale=2,
+)
+display_visual_thin = line_utils.select_zoomed_inner_preview(
+    visualized_thin, card_width, card_height, inner_left, inner_right, inner_top, inner_bottom, zoom_mode
+)
+display_visual_thick = line_utils.select_zoomed_inner_preview(
+    visualized_thick, card_width, card_height, inner_left, inner_right, inner_top, inner_bottom, zoom_mode
 )
 
 with left_col:
     stage_image_col, stage_summary_col = st.columns([4, 2], gap="small")
     with stage_image_col:
-        line_utils.force_stage_image_zoom(zoom_factor=zoom_factor_value)
         st.image(
-            display_visual,
+            display_visual_thick,
             caption="Full card by default. Top/Bottom inputs zoom 50% width, Left/Right inputs zoom 50% height.",
             width="content",
         )
+        line_utils.force_stage_hover_line_swap(
+            thin_image_url=_rgb_array_to_data_url(display_visual_thin),
+            thick_image_url=_rgb_array_to_data_url(display_visual_thick),
+        )
+        line_utils.force_stage_image_zoom(zoom_factor=zoom_factor_value)
     with stage_summary_col:
         line_utils.render_result_summary(result)

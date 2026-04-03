@@ -377,3 +377,54 @@ def get_stage_image_zoom_script(zoom_factor: int = 7) -> str:
     })();
     </script>
     """.replace("__ZOOM_FACTOR__", str(int(zoom_factor)))
+
+
+def get_stage_hover_swap_script(thin_image_url: str, thick_image_url: str) -> str:
+    script = """
+    <script>
+    (function applyStageHoverSwap() {
+      const thinUrl = __THIN_IMAGE_URL__;
+      const thickUrl = __THICK_IMAGE_URL__;
+      if (!thinUrl || !thickUrl) return;
+      const images = Array.from(window.parent.document.querySelectorAll('div[data-testid="stImage"] img'));
+      if (!images.length) return;
+      const target = images[0];
+      if (!target) return;
+      if (window.parent.__lineMarkHoverSwapEnter) {
+        target.removeEventListener("mouseenter", window.parent.__lineMarkHoverSwapEnter, true);
+      }
+      if (window.parent.__lineMarkHoverSwapLeave) {
+        target.removeEventListener("mouseleave", window.parent.__lineMarkHoverSwapLeave, true);
+      }
+      const isInsideTarget = (clientX, clientY) => {
+        const rect = target.getBoundingClientRect();
+        return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+      };
+      const applyFromPointer = () => {
+        const pointer = window.parent.__lineMarkLastPointer;
+        if (pointer && isInsideTarget(pointer.x, pointer.y)) {
+          target.src = thinUrl;
+          return;
+        }
+        target.src = thickUrl;
+      };
+      window.parent.__lineMarkHoverSwapEnter = () => { target.src = thinUrl; };
+      window.parent.__lineMarkHoverSwapLeave = () => { target.src = thickUrl; };
+      const oldPointerTracker = window.parent.__lineMarkPointerTracker;
+      if (oldPointerTracker) {
+        window.parent.document.removeEventListener("mousemove", oldPointerTracker, true);
+      }
+      window.parent.__lineMarkPointerTracker = (event) => {
+        window.parent.__lineMarkLastPointer = { x: event.clientX, y: event.clientY };
+      };
+      window.parent.document.addEventListener("mousemove", window.parent.__lineMarkPointerTracker, true);
+      target.addEventListener("mouseenter", window.parent.__lineMarkHoverSwapEnter, true);
+      target.addEventListener("mouseleave", window.parent.__lineMarkHoverSwapLeave, true);
+      applyFromPointer();
+    })();
+    </script>
+    """
+    return (
+        script.replace("__THIN_IMAGE_URL__", json.dumps(thin_image_url))
+        .replace("__THICK_IMAGE_URL__", json.dumps(thick_image_url))
+    )

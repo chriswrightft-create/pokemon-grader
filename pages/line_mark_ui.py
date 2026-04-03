@@ -3,7 +3,7 @@ from typing import Optional
 import streamlit as st
 import streamlit.components.v1 as components
 import streamlit.elements.image as streamlit_image
-from pages.line_mark_canvas_js import get_canvas_enhancement_script, get_stage_image_zoom_script
+from pages.line_mark_canvas_js import get_canvas_enhancement_script, get_stage_hover_swap_script, get_stage_image_zoom_script
 from pages.line_mark_preview import border_color, draw_visible_inner_border, edge_preview, line_stage_zoom_preview, select_zoomed_inner_preview
 
 
@@ -59,6 +59,10 @@ def force_canvas_crosshair(source_image_url: str = "", zoom_factor: int = 4) -> 
 
 def force_stage_image_zoom(zoom_factor: int = 7) -> None:
     components.html(get_stage_image_zoom_script(zoom_factor=zoom_factor), height=0, width=0)
+
+
+def force_stage_hover_line_swap(thin_image_url: str, thick_image_url: str) -> None:
+    components.html(get_stage_hover_swap_script(thin_image_url=thin_image_url, thick_image_url=thick_image_url), height=0, width=0)
 
 
 def normalized_color_label(raw_value: object, default_label: str = "Red") -> str:

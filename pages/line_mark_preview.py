@@ -17,16 +17,26 @@ def edge_preview(
     image_rgb: np.ndarray,
     points: list[tuple[float, float]],
     line_bgr: tuple[int, int, int] = (0, 255, 255),
+    line_thickness: int = 1,
+    render_scale: int = 1,
 ) -> np.ndarray:
-    preview = image_rgb.copy()
-    overlay = preview.copy()
-    edges = _side_indexes(points)
-    image_height, image_width = overlay.shape[:2]
+    scale = max(1, int(render_scale))
+    if scale > 1:
+        image_height, image_width = image_rgb.shape[:2]
+        preview = cv2.resize(image_rgb, (image_width * scale, image_height * scale), interpolation=cv2.INTER_CUBIC)
+        scaled_points = [(x_value * scale, y_value * scale) for x_value, y_value in points]
+        draw_thickness = max(1, int(line_thickness) * scale)
+    else:
+        preview = image_rgb.copy()
+        scaled_points = points
+        draw_thickness = max(1, int(line_thickness))
+    edges = _side_indexes(scaled_points)
+    image_height, image_width = preview.shape[:2]
     for indexes in edges:
         if len(indexes) == 2:
             first_index, second_index = indexes
-            first_point = points[first_index]
-            second_point = points[second_index]
+            first_point = scaled_points[first_index]
+            second_point = scaled_points[second_index]
             first = (int(round(first_point[0])), int(round(first_point[1])))
             second = (int(round(second_point[0])), int(round(second_point[1])))
             dx = second_point[0] - first_point[0]
@@ -37,30 +47,33 @@ def edge_preview(
                 end_point = (int(round(second_point[0] + dx * extend)), int(round(second_point[1] + dy * extend)))
                 clipped, clip_start, clip_end = cv2.clipLine((0, 0, image_width, image_height), start_point, end_point)
                 if clipped:
-                    cv2.line(overlay, clip_start, clip_end, (0, 0, 0), 1, lineType=cv2.LINE_AA)
-                    cv2.line(overlay, clip_start, clip_end, line_bgr, 1, lineType=cv2.LINE_AA)
+                    cv2.line(preview, clip_start, clip_end, (0, 0, 0), draw_thickness, lineType=cv2.LINE_AA)
+                    cv2.line(preview, clip_start, clip_end, line_bgr, draw_thickness, lineType=cv2.LINE_AA)
             else:
-                cv2.line(overlay, first, second, (0, 0, 0), 1, lineType=cv2.LINE_AA)
-                cv2.line(overlay, first, second, line_bgr, 1, lineType=cv2.LINE_AA)
-            cv2.circle(overlay, first, 3, line_bgr, 1, lineType=cv2.LINE_AA)
-            cv2.circle(overlay, second, 3, line_bgr, 1, lineType=cv2.LINE_AA)
+                cv2.line(preview, first, second, (0, 0, 0), draw_thickness, lineType=cv2.LINE_AA)
+                cv2.line(preview, first, second, line_bgr, draw_thickness, lineType=cv2.LINE_AA)
+            cv2.circle(preview, first, max(3, scale), line_bgr, 1, lineType=cv2.LINE_AA)
+            cv2.circle(preview, second, max(3, scale), line_bgr, 1, lineType=cv2.LINE_AA)
             continue
         first_index, middle_index, second_index = indexes
-        first_point = points[first_index]
-        middle_point = points[middle_index]
-        second_point = points[second_index]
+        first_point = scaled_points[first_index]
+        middle_point = scaled_points[middle_index]
+        second_point = scaled_points[second_index]
         first = (int(round(first_point[0])), int(round(first_point[1])))
         middle = (int(round(middle_point[0])), int(round(middle_point[1])))
         second = (int(round(second_point[0])), int(round(second_point[1])))
         curve_points = _quadratic_points(first_point, middle_point, second_point, sample_count=160)
         if len(curve_points) >= 2:
             curve_int = np.array([(int(round(x)), int(round(y))) for x, y in curve_points], dtype=np.int32).reshape((-1, 1, 2))
-            cv2.polylines(overlay, [curve_int], False, (0, 0, 0), 1, lineType=cv2.LINE_AA)
-            cv2.polylines(overlay, [curve_int], False, line_bgr, 1, lineType=cv2.LINE_AA)
-        cv2.circle(overlay, first, 3, line_bgr, 1, lineType=cv2.LINE_AA)
-        cv2.circle(overlay, middle, 3, line_bgr, 1, lineType=cv2.LINE_AA)
-        cv2.circle(overlay, second, 3, line_bgr, 1, lineType=cv2.LINE_AA)
-    return cv2.addWeighted(overlay, 0.45, preview, 0.55, 0.0)
+            cv2.polylines(preview, [curve_int], False, (0, 0, 0), draw_thickness, lineType=cv2.LINE_AA)
+            cv2.polylines(preview, [curve_int], False, line_bgr, draw_thickness, lineType=cv2.LINE_AA)
+        cv2.circle(preview, first, max(3, scale), line_bgr, 1, lineType=cv2.LINE_AA)
+        cv2.circle(preview, middle, max(3, scale), line_bgr, 1, lineType=cv2.LINE_AA)
+        cv2.circle(preview, second, max(3, scale), line_bgr, 1, lineType=cv2.LINE_AA)
+    if scale > 1:
+        original_height, original_width = image_rgb.shape[:2]
+        return cv2.resize(preview, (original_width, original_height), interpolation=cv2.INTER_AREA)
+    return preview
 
 
 def line_stage_zoom_preview(
@@ -68,8 +81,10 @@ def line_stage_zoom_preview(
     points: list[tuple[float, float]],
     padding: int = 5,
     line_bgr: tuple[int, int, int] = (0, 255, 255),
+    line_thickness: int = 1,
+    render_scale: int = 1,
 ) -> np.ndarray:
-    preview = edge_preview(image_rgb, points, line_bgr=line_bgr)
+    preview = edge_preview(image_rgb, points, line_bgr=line_bgr, line_thickness=line_thickness, render_scale=render_scale)
     xs = [point[0] for point in points]
     ys = [point[1] for point in points]
     min_x = max(0, int(min(xs)) - padding)
@@ -118,8 +133,10 @@ def select_zoomed_line_preview(
     zoom_mode: str,
     padding: int = 5,
     line_bgr: tuple[int, int, int] = (0, 255, 255),
+    line_thickness: int = 1,
+    render_scale: int = 1,
 ) -> np.ndarray:
-    preview = edge_preview(image_rgb, points, line_bgr=line_bgr)
+    preview = edge_preview(image_rgb, points, line_bgr=line_bgr, line_thickness=line_thickness, render_scale=render_scale)
     image_height, image_width = preview.shape[:2]
     side_points = _side_points(points)
     if side_points is None:
@@ -181,7 +198,14 @@ def select_zoomed_line_preview(
         zoom_top = max(0, middle_top - padding)
         zoom_bottom = min(image_height, max(zoom_top + 1, middle_bottom + padding))
         return preview[zoom_top:zoom_bottom, zoom_left:zoom_right]
-    return line_stage_zoom_preview(image_rgb, points, padding=padding, line_bgr=line_bgr)
+    return line_stage_zoom_preview(
+        image_rgb,
+        points,
+        padding=padding,
+        line_bgr=line_bgr,
+        line_thickness=line_thickness,
+        render_scale=render_scale,
+    )
 
 
 def _side_indexes(points: list[tuple[float, float]]) -> list[tuple[int, ...]]:
@@ -229,11 +253,24 @@ def draw_visible_inner_border(
     right_x: int,
     bottom_y: int,
     border_bgr: tuple[int, int, int],
+    border_thickness: int = 1,
+    render_scale: int = 1,
 ) -> np.ndarray:
+    scale = max(1, int(render_scale))
+    if scale > 1:
+        image_height, image_width = image_rgb.shape[:2]
+        outlined = cv2.resize(image_rgb, (image_width * scale, image_height * scale), interpolation=cv2.INTER_CUBIC)
+        cv2.rectangle(
+            outlined,
+            (left_x * scale, top_y * scale),
+            (right_x * scale, bottom_y * scale),
+            border_bgr,
+            max(1, int(border_thickness) * scale),
+            lineType=cv2.LINE_AA,
+        )
+        return cv2.resize(outlined, (image_width, image_height), interpolation=cv2.INTER_AREA)
     outlined = image_rgb.copy()
-    overlay = outlined.copy()
-    cv2.rectangle(overlay, (left_x, top_y), (right_x, bottom_y), border_bgr, 1, lineType=cv2.LINE_8)
-    outlined = cv2.addWeighted(overlay, 0.55, outlined, 0.45, 0.0)
+    cv2.rectangle(outlined, (left_x, top_y), (right_x, bottom_y), border_bgr, border_thickness, lineType=cv2.LINE_AA)
     return outlined
 
 

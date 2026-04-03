@@ -70,13 +70,13 @@ def _render_axis_controls(persistent_int_input: Callable[[str, str, str], int]) 
 def _render_angle_controls(persistent_float_input: Callable[[str, str, str], float]) -> None:
     angle_cols = st.columns(4)
     with angle_cols[0]:
-        persistent_float_input("Top Angle", "line_top_angle", "line_top_angle_widget")
+        persistent_float_input("Top Rotation", "line_top_angle", "line_top_angle_widget")
     with angle_cols[1]:
-        persistent_float_input("Right Angle", "line_right_angle", "line_right_angle_widget")
+        persistent_float_input("Right Rotation", "line_right_angle", "line_right_angle_widget")
     with angle_cols[2]:
-        persistent_float_input("Bottom Angle", "line_bottom_angle", "line_bottom_angle_widget")
+        persistent_float_input("Bottom Rotation", "line_bottom_angle", "line_bottom_angle_widget")
     with angle_cols[3]:
-        persistent_float_input("Left Angle", "line_left_angle", "line_left_angle_widget")
+        persistent_float_input("Left Rotation", "line_left_angle", "line_left_angle_widget")
 
 
 def _clear_marking_state() -> None:

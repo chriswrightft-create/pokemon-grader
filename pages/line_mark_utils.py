@@ -22,6 +22,7 @@ draw_cross_markers = _preview.draw_cross_markers
 select_zoomed_line_preview = _preview.select_zoomed_line_preview
 fit_size = _ui.fit_size
 force_canvas_crosshair = _ui.force_canvas_crosshair
+force_stage_hover_line_swap = _ui.force_stage_hover_line_swap
 force_stage_image_zoom = _ui.force_stage_image_zoom
 inject_line_mark_styles = _ui.inject_line_mark_styles
 normalized_color_label = _ui.normalized_color_label
@@ -40,6 +41,7 @@ __all__ = [
     "select_zoomed_line_preview",
     "fit_size",
     "force_canvas_crosshair",
+    "force_stage_hover_line_swap",
     "force_stage_image_zoom",
     "inject_line_mark_styles",
     "normalized_color_label",
