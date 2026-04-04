@@ -4,18 +4,22 @@ import streamlit as st
 
 
 def render_stage_actions(stage: str, clear_points: Callable[[], None], reset_line_controls: Callable[[], None]) -> Optional[str]:
-    action_cols = st.columns(3, gap="small")
+    if stage == "lines":
+        action_cols = st.columns(2, gap="small")
+        with action_cols[0]:
+            if st.button("Back to modify points", use_container_width=True):
+                return "modify"
+        with action_cols[1]:
+            if st.button("Next to Inner Border", use_container_width=True):
+                return "continue"
+        return None
+
+    action_cols = st.columns(2, gap="small")
     with action_cols[0]:
-        if st.button("Clear marked points"):
-            clear_points()
-            return "cleared"
-    with action_cols[1]:
-        if st.button("Modify points"):
+        if st.button("Back to modify points", use_container_width=True):
             return "modify"
-    with action_cols[2]:
-        if stage == "lines" and st.button("Continue to inner border stage"):
-            return "continue"
-        if stage != "lines" and st.button("Back to line stage"):
+    with action_cols[1]:
+        if st.button("Back to outer border", use_container_width=True):
             return "back"
     return None
 

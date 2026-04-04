@@ -143,25 +143,6 @@ def get_canvas_enhancement_script(
             cursorOverlayVertical = cursorOverlay.querySelector(".line-mark-cursor-crosshair-v");
             cursorOverlayMoveArrows = Array.from(cursorOverlay.querySelectorAll(".line-mark-cursor-move-arrow"));
           }
-          let debugPanel = doc.getElementById("line-mark-debug-panel");
-          if (!debugPanel) {
-            debugPanel = doc.createElement("div");
-            debugPanel.id = "line-mark-debug-panel";
-            debugPanel.style.position = "fixed";
-            debugPanel.style.left = "12px";
-            debugPanel.style.bottom = "12px";
-            debugPanel.style.zIndex = "2147483647";
-            debugPanel.style.background = "rgba(0,0,0,0.78)";
-            debugPanel.style.border = "1px solid #00ffff";
-            debugPanel.style.borderRadius = "6px";
-            debugPanel.style.padding = "6px 8px";
-            debugPanel.style.fontSize = "11px";
-            debugPanel.style.fontFamily = "monospace";
-            debugPanel.style.color = "#00ffff";
-            debugPanel.style.pointerEvents = "none";
-            debugPanel.textContent = "debug: ready";
-            doc.body.appendChild(debugPanel);
-          }
 
           let sidePanel = doc.getElementById("line-mark-side-zoom");
           let sidePanelCanvas = doc.getElementById("line-mark-side-zoom-canvas");
@@ -222,9 +203,6 @@ def get_canvas_enhancement_script(
                 }
               });
               return nearestIndex;
-            };
-            const setDebugText = (message) => {
-              if (debugPanel) debugPanel.textContent = message;
             };
             let cachedFabricCanvas = null;
             const getRawObjects = (candidate) => {
@@ -486,7 +464,6 @@ def get_canvas_enhancement_script(
               const nearExistingPoint = updateCursor(clientX, clientY, targetRect, inside);
               const canvasPoint = getCanvasPoint(clientX, clientY, targetRect);
               const nearestIndex = findNearestPointIndex(canvasPoint);
-              setDebugText(`move inside=${inside} near=${nearExistingPoint} nearest=${nearestIndex} drag=${dragPointIndex}`);
               if (!inside) {
                 lens.style.display = "none";
                 sidePanel.style.display = "none";
@@ -599,7 +576,6 @@ def get_canvas_enhancement_script(
               if (inside) {
                 const canvasPoint = getCanvasPoint(event.clientX, event.clientY, targetRect);
                 const nearestIndex = findNearestPointIndex(canvasPoint);
-                setDebugText(`down inside=${inside} nearest=${nearestIndex} drag=${dragPointIndex}`);
                 if (nearestIndex >= 0) {
                   dragPointIndex = nearestIndex;
                   dragStartMouse = { x: event.clientX, y: event.clientY };
@@ -673,8 +649,7 @@ def get_canvas_enhancement_script(
                   try {
                     // Two-step signal: (1) source point click arms move, (2) destination click commits move.
                     dispatchAtCanvasPoint(startCanvasPoint);
-                    const releaseResult = dispatchAtCanvasPoint(releaseCanvasPoint);
-                    setDebugText(`up commit drag=${dragPointIndex} target=${releaseResult.targetNode && releaseResult.targetNode.tagName ? releaseResult.targetNode.tagName : "?"} x=${Math.round(releaseResult.clientX)} y=${Math.round(releaseResult.clientY)}`);
+                    dispatchAtCanvasPoint(releaseCanvasPoint);
                   } catch (error) {}
                   synthesizingPointPlacement = false;
                 }

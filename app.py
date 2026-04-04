@@ -88,7 +88,13 @@ canvas_background.save(zoom_buffer, format="PNG")
 zoom_source_url = f"data:image/png;base64,{base64.b64encode(zoom_buffer.getvalue()).decode('ascii')}"
 
 left_col, right_col = st.columns([3, 2])
+locked_points = st.session_state.get("line_mark_locked_points")
+current_stage = st.session_state.get("line_mark_stage", "lines")
+stage_heading = "## Initial Point Placement"
+if locked_points is not None:
+    stage_heading = "## Outer Border" if current_stage == "lines" else "## Inner Border"
 with right_col:
+    st.markdown(stage_heading)
     zoom_factor_value = int(st.number_input("Zoom magnification", min_value=2, max_value=12, value=5, step=1, key="line_zoom_factor"))
 
 
@@ -102,7 +108,7 @@ def clear_all_marked_points() -> None:
     reset_line_controls()
     line_stage_ui.clear_marking_state()
     st.rerun()
-locked_points = st.session_state.get("line_mark_locked_points")
+
 if locked_points is None:
     previous_points = st.session_state.get("line_mark_canvas_points", [])
     with left_col:
@@ -142,7 +148,7 @@ if locked_points is None:
         if len(points) < 12:
             row_cols = st.columns(2, gap="small")
             with row_cols[0]:
-                if st.button("Clear marked points"):
+                if st.button("Clear marked points", use_container_width=True):
                     clear_all_marked_points()
             st.info("Keep clicking in order: top(3), right(3), bottom(3), left(3).")
             st.caption("Quickstart")
@@ -150,10 +156,10 @@ if locked_points is None:
             st.stop()
         row_cols = st.columns(2, gap="small")
         with row_cols[0]:
-            if st.button("Clear marked points"):
+            if st.button("Clear marked points", use_container_width=True):
                 clear_all_marked_points()
         with row_cols[1]:
-            if st.button("Lock points and continue"):
+            if st.button("Lock points and continue", use_container_width=True):
                 reset_line_controls()
                 st.session_state["line_mark_locked_points"] = points
                 st.session_state["line_mark_stage"] = "lines"
