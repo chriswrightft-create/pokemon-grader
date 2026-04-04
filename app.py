@@ -110,22 +110,27 @@ if locked_points is None:
             source_image_url=zoom_source_url,
             zoom_factor=zoom_factor_value,
             points=previous_points,
-            move_radius_px=20.0,
+            move_radius_px=15.0,
         )
         canvas_result = st_canvas(
             fill_color="rgba(0, 0, 0, 0)",
             stroke_width=1,
             stroke_color="#00FFFF",
             background_image=canvas_background,
-            update_streamlit=len(previous_points) < 12,
+            update_streamlit=True,
             drawing_mode=canvas_drawing_mode,
             point_display_radius=0,
             height=canvas_height,
             width=canvas_width,
             key=f"line_mark_canvas_{st.session_state['line_mark_canvas_nonce']}",
         )
-        points = line_utils.point_list_from_canvas(canvas_result.json_data)
-        points = point_stage.get_filtered_points(points, previous_points)
+        raw_points = line_utils.point_list_from_canvas(canvas_result.json_data)
+        previous_raw_points = st.session_state.get("line_mark_canvas_raw_points", [])
+        new_raw_points = raw_points
+        if previous_raw_points and len(raw_points) >= len(previous_raw_points) and raw_points[: len(previous_raw_points)] == previous_raw_points:
+            new_raw_points = raw_points[len(previous_raw_points):]
+        points = point_stage.get_filtered_points(new_raw_points, previous_points)
+        st.session_state["line_mark_canvas_raw_points"] = raw_points
     st.session_state["line_mark_canvas_points"] = points
     if points != previous_points:
         st.rerun()

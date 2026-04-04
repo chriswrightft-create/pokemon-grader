@@ -20,7 +20,7 @@ def get_canvas_enhancement_script(
       const styleId = "line-mark-crosshair-style";
       const css = `
         html, body { cursor: default; }
-        canvas, .upper-canvas, .lower-canvas, .canvas-container, .canvas-container * { cursor: none !important; }
+        canvas, .upper-canvas, .lower-canvas, .canvas-container { cursor: none !important; }
         button, [role="button"] { color: #f3f4f6 !important; opacity: 1 !important; }
         svg, svg * { stroke: #f3f4f6 !important; fill: #f3f4f6 !important; opacity: 1 !important; }
         img { filter: invert(1) brightness(1.35) contrast(1.1) !important; opacity: 1 !important; }
@@ -51,7 +51,9 @@ def get_canvas_enhancement_script(
           if (!upperCanvas) return;
           const lowerCanvas = doc.querySelector("canvas.lower-canvas");
           const applyCursorStyle = (cursorValue) => {
-            const resolvedCursor = cursorValue === "default" ? "default" : "none";
+            let resolvedCursor = "none";
+            if (cursorValue === "default") resolvedCursor = "default";
+            if (cursorValue === "move") resolvedCursor = "move";
             const upperParent = upperCanvas ? upperCanvas.parentElement : null;
             const lowerParent = lowerCanvas ? lowerCanvas.parentElement : null;
             const nodes = [upperCanvas, lowerCanvas, upperParent, lowerParent].filter(Boolean);
@@ -81,6 +83,7 @@ def get_canvas_enhancement_script(
           let cursorOverlay = doc.getElementById("line-mark-cursor-overlay");
           let cursorOverlayHorizontal = null;
           let cursorOverlayVertical = null;
+          let cursorOverlayMoveArrows = [];
           if (!cursorOverlay) {
             cursorOverlay = doc.createElement("div");
             cursorOverlay.id = "line-mark-cursor-overlay";
@@ -100,6 +103,7 @@ def get_canvas_enhancement_script(
             cursorOverlayHorizontal.style.width = "16px";
             cursorOverlayHorizontal.style.height = "1px";
             cursorOverlayHorizontal.style.background = "rgb(0,255,255)";
+            cursorOverlayHorizontal.className = "line-mark-cursor-crosshair-h";
             cursorOverlayVertical = doc.createElement("div");
             cursorOverlayVertical.style.position = "absolute";
             cursorOverlayVertical.style.left = "12px";
@@ -107,12 +111,56 @@ def get_canvas_enhancement_script(
             cursorOverlayVertical.style.width = "1px";
             cursorOverlayVertical.style.height = "16px";
             cursorOverlayVertical.style.background = "rgb(0,255,255)";
+            cursorOverlayVertical.className = "line-mark-cursor-crosshair-v";
+            const makeMoveArrow = (leftPx, topPx, rotationDeg) => {
+              const arrow = doc.createElement("div");
+              arrow.className = "line-mark-cursor-move-arrow";
+              arrow.style.position = "absolute";
+              arrow.style.left = `${leftPx}px`;
+              arrow.style.top = `${topPx}px`;
+              arrow.style.width = "0";
+              arrow.style.height = "0";
+              arrow.style.borderLeft = "3px solid transparent";
+              arrow.style.borderRight = "3px solid transparent";
+              arrow.style.borderTop = "5px solid rgb(0,255,255)";
+              arrow.style.transform = `rotate(${rotationDeg}deg)`;
+              arrow.style.transformOrigin = "50% 50%";
+              arrow.style.display = "none";
+              return arrow;
+            };
+            cursorOverlayMoveArrows = [
+              makeMoveArrow(9, 1, 0),
+              makeMoveArrow(18, 9, 90),
+              makeMoveArrow(9, 18, 180),
+              makeMoveArrow(1, 9, 270),
+            ];
             cursorOverlay.appendChild(cursorOverlayHorizontal);
             cursorOverlay.appendChild(cursorOverlayVertical);
+            cursorOverlayMoveArrows.forEach((arrow) => cursorOverlay.appendChild(arrow));
             doc.body.appendChild(cursorOverlay);
           } else {
-            cursorOverlayHorizontal = cursorOverlay.children && cursorOverlay.children.length > 0 ? cursorOverlay.children[0] : null;
-            cursorOverlayVertical = cursorOverlay.children && cursorOverlay.children.length > 1 ? cursorOverlay.children[1] : null;
+            cursorOverlayHorizontal = cursorOverlay.querySelector(".line-mark-cursor-crosshair-h");
+            cursorOverlayVertical = cursorOverlay.querySelector(".line-mark-cursor-crosshair-v");
+            cursorOverlayMoveArrows = Array.from(cursorOverlay.querySelectorAll(".line-mark-cursor-move-arrow"));
+          }
+          let debugPanel = doc.getElementById("line-mark-debug-panel");
+          if (!debugPanel) {
+            debugPanel = doc.createElement("div");
+            debugPanel.id = "line-mark-debug-panel";
+            debugPanel.style.position = "fixed";
+            debugPanel.style.left = "12px";
+            debugPanel.style.bottom = "12px";
+            debugPanel.style.zIndex = "2147483647";
+            debugPanel.style.background = "rgba(0,0,0,0.78)";
+            debugPanel.style.border = "1px solid #00ffff";
+            debugPanel.style.borderRadius = "6px";
+            debugPanel.style.padding = "6px 8px";
+            debugPanel.style.fontSize = "11px";
+            debugPanel.style.fontFamily = "monospace";
+            debugPanel.style.color = "#00ffff";
+            debugPanel.style.pointerEvents = "none";
+            debugPanel.textContent = "debug: ready";
+            doc.body.appendChild(debugPanel);
           }
 
           let sidePanel = doc.getElementById("line-mark-side-zoom");
@@ -155,14 +203,249 @@ def get_canvas_enhancement_script(
           providedImage.onload = () => {
             const zoom = zoomFactor;
             const radius = 30;
+            const getCanvasPoint = (clientX, clientY, targetRect) => ({
+              x: clientX - targetRect.left,
+              y: clientY - targetRect.top,
+            });
+            const findNearestPointIndex = (canvasPoint) => {
+              if (!Array.isArray(pointList) || !canvasPoint) return -1;
+              let nearestIndex = -1;
+              let nearestDistance = Number.POSITIVE_INFINITY;
+              pointList.forEach((pointNode, index) => {
+                if (!Array.isArray(pointNode) || pointNode.length < 2) return;
+                const dx = canvasPoint.x - Number(pointNode[0] || 0);
+                const dy = canvasPoint.y - Number(pointNode[1] || 0);
+                const distance = Math.hypot(dx, dy);
+                if (distance <= moveRadiusPx && distance < nearestDistance) {
+                  nearestDistance = distance;
+                  nearestIndex = index;
+                }
+              });
+              return nearestIndex;
+            };
+            const setDebugText = (message) => {
+              if (debugPanel) debugPanel.textContent = message;
+            };
+            let cachedFabricCanvas = null;
+            const getRawObjects = (candidate) => {
+              if (!candidate) return [];
+              if (typeof candidate.getObjects === "function") {
+                try {
+                  const objects = candidate.getObjects();
+                  return Array.isArray(objects) ? objects : [];
+                } catch (error) {}
+              }
+              if (Array.isArray(candidate._objects)) return candidate._objects;
+              if (Array.isArray(candidate.objects)) return candidate.objects;
+              return [];
+            };
+            const getPointObjects = (canvasLike) => {
+              const objects = getRawObjects(canvasLike);
+              return objects.filter((objectNode) => objectNode && (objectNode.type === "circle" || typeof objectNode.radius === "number"));
+            };
+            const isCanvasLikeWithPoints = (candidate) => {
+              if (!candidate) return false;
+              return getPointObjects(candidate).length > 0;
+            };
+            const getFabricCanvas = () => {
+              if (cachedFabricCanvas) return cachedFabricCanvas;
+              const candidateList = [
+                upperCanvas && upperCanvas.__canvas,
+                upperCanvas && upperCanvas.__fabric,
+                upperCanvas && upperCanvas.fabric,
+                upperCanvas && upperCanvas._fabricCanvas,
+                lowerCanvas && lowerCanvas.__canvas,
+                lowerCanvas && lowerCanvas.__fabric,
+                lowerCanvas && lowerCanvas.fabric,
+                lowerCanvas && lowerCanvas._fabricCanvas,
+                frame.contentWindow && frame.contentWindow.__canvas,
+                frame.contentWindow && frame.contentWindow._canvas,
+                frame.contentWindow && frame.contentWindow.canvas,
+                frame.contentWindow && frame.contentWindow.fabricCanvas,
+              ];
+              for (let index = 0; index < candidateList.length; index += 1) {
+                if (isCanvasLikeWithPoints(candidateList[index])) {
+                  cachedFabricCanvas = candidateList[index];
+                  return cachedFabricCanvas;
+                }
+              }
+              const windowKeys = Object.keys(frame.contentWindow || {}).filter((key) => key.toLowerCase().includes("canvas"));
+              for (let index = 0; index < windowKeys.length; index += 1) {
+                const candidate = frame.contentWindow[windowKeys[index]];
+                if (isCanvasLikeWithPoints(candidate)) {
+                  cachedFabricCanvas = candidate;
+                  return cachedFabricCanvas;
+                }
+              }
+              // Deep fallback: scan all top-level window values and one-level nested values.
+              const windowObject = frame.contentWindow || {};
+              const allKeys = Object.keys(windowObject);
+              const matchesCanvasNode = (candidate) => (
+                candidate &&
+                (
+                  candidate.upperCanvasEl === upperCanvas ||
+                  candidate.lowerCanvasEl === lowerCanvas ||
+                  candidate.contextTop?.canvas === upperCanvas ||
+                  candidate.contextContainer?.canvas === lowerCanvas
+                )
+              );
+              for (let index = 0; index < allKeys.length; index += 1) {
+                let rootValue = null;
+                try {
+                  rootValue = windowObject[allKeys[index]];
+                } catch (error) {
+                  rootValue = null;
+                }
+                if (isCanvasLikeWithPoints(rootValue) && matchesCanvasNode(rootValue)) {
+                  cachedFabricCanvas = rootValue;
+                  return cachedFabricCanvas;
+                }
+                if (!rootValue || typeof rootValue !== "object") continue;
+                let nestedKeys = [];
+                try {
+                  nestedKeys = Object.keys(rootValue);
+                } catch (error) {
+                  nestedKeys = [];
+                }
+                for (let nestedIndex = 0; nestedIndex < nestedKeys.length; nestedIndex += 1) {
+                  let nestedValue = null;
+                  try {
+                    nestedValue = rootValue[nestedKeys[nestedIndex]];
+                  } catch (error) {
+                    nestedValue = null;
+                  }
+                  if (isCanvasLikeWithPoints(nestedValue) && matchesCanvasNode(nestedValue)) {
+                    cachedFabricCanvas = nestedValue;
+                    return cachedFabricCanvas;
+                  }
+                }
+              }
+              // Last-resort exhaustive scan for any object holding circle points.
+              for (let index = 0; index < allKeys.length; index += 1) {
+                let rootValue = null;
+                try {
+                  rootValue = windowObject[allKeys[index]];
+                } catch (error) {
+                  rootValue = null;
+                }
+                if (isCanvasLikeWithPoints(rootValue)) {
+                  cachedFabricCanvas = rootValue;
+                  return cachedFabricCanvas;
+                }
+                if (!rootValue || typeof rootValue !== "object") continue;
+                let nestedKeys = [];
+                try {
+                  nestedKeys = Object.keys(rootValue);
+                } catch (error) {
+                  nestedKeys = [];
+                }
+                for (let nestedIndex = 0; nestedIndex < nestedKeys.length; nestedIndex += 1) {
+                  let nestedValue = null;
+                  try {
+                    nestedValue = rootValue[nestedKeys[nestedIndex]];
+                  } catch (error) {
+                    nestedValue = null;
+                  }
+                  if (isCanvasLikeWithPoints(nestedValue)) {
+                    cachedFabricCanvas = nestedValue;
+                    return cachedFabricCanvas;
+                  }
+                }
+              }
+              // Deep recursive fallback with cycle protection.
+              const root = frame.contentWindow || {};
+              const visited = new WeakSet();
+              const queue = [root];
+              let scanned = 0;
+              const MAX_SCAN_NODES = 5000;
+              while (queue.length > 0 && scanned < MAX_SCAN_NODES) {
+                const currentNode = queue.shift();
+                if (!currentNode || (typeof currentNode !== "object" && typeof currentNode !== "function")) continue;
+                if (visited.has(currentNode)) continue;
+                visited.add(currentNode);
+                scanned += 1;
+                if (isCanvasLikeWithPoints(currentNode)) {
+                  cachedFabricCanvas = currentNode;
+                  return cachedFabricCanvas;
+                }
+                let childKeys = [];
+                try {
+                  childKeys = Object.keys(currentNode);
+                } catch (error) {
+                  childKeys = [];
+                }
+                for (let childIndex = 0; childIndex < childKeys.length; childIndex += 1) {
+                  let childValue = null;
+                  try {
+                    childValue = currentNode[childKeys[childIndex]];
+                  } catch (error) {
+                    childValue = null;
+                  }
+                  if (!childValue) continue;
+                  if (typeof childValue === "object" || typeof childValue === "function") {
+                    queue.push(childValue);
+                  }
+                }
+              }
+              return null;
+            };
+            const renderFabricCanvas = (fabricCanvas) => {
+              if (!fabricCanvas) return;
+              if (typeof fabricCanvas.requestRenderAll === "function") {
+                fabricCanvas.requestRenderAll();
+                return;
+              }
+              if (typeof fabricCanvas.renderAll === "function") {
+                fabricCanvas.renderAll();
+              }
+            };
+            const setFabricPointCenter = (pointObject, canvasX, canvasY) => {
+              if (!pointObject || typeof pointObject.set !== "function") return;
+              const radiusValue = Number(pointObject.radius || 0);
+              const originX = String(pointObject.originX || "left").toLowerCase();
+              const originY = String(pointObject.originY || "top").toLowerCase();
+              let leftValue = canvasX;
+              let topValue = canvasY;
+              if (originX === "left") leftValue = canvasX - radiusValue;
+              else if (originX === "right") leftValue = canvasX + radiusValue;
+              if (originY === "top") topValue = canvasY - radiusValue;
+              else if (originY === "bottom") topValue = canvasY + radiusValue;
+              pointObject.set({ left: leftValue, top: topValue });
+              if (typeof pointObject.setCoords === "function") pointObject.setCoords();
+            };
+            const getGlobalDragState = () => {
+              const state = window.parent.__lineMarkDragState;
+              if (!state || typeof state !== "object") {
+                return { active: false, index: -1, startMouse: null, startPoint: null };
+              }
+              return state;
+            };
+            const setGlobalDragState = (nextState) => {
+              window.parent.__lineMarkDragState = nextState;
+            };
+            let dragPointIndex = -1;
+            let dragStartMouse = null;
+            let dragStartPoint = null;
+            const restoredDragState = getGlobalDragState();
+            if (restoredDragState.active) {
+              dragPointIndex = Number(restoredDragState.index ?? -1);
+              dragStartMouse = restoredDragState.startMouse || null;
+              dragStartPoint = restoredDragState.startPoint || null;
+            }
+            let synthesizingPointPlacement = false;
             const prevMove = window.__lineMarkMoveHandler;
+            const prevPointerMove = window.__lineMarkPointerMoveHandler;
             const prevDown = window.__lineMarkDownHandler;
             const prevUp = window.__lineMarkUpHandler;
             const prevEnter = window.__lineMarkCanvasEnterHandler;
             const prevLeave = window.__lineMarkCanvasLeaveHandler;
             if (prevMove) doc.removeEventListener("mousemove", prevMove, true);
+            if (prevPointerMove) doc.removeEventListener("pointermove", prevPointerMove, true);
             if (prevDown) doc.removeEventListener("mousedown", prevDown, true);
             if (prevUp) doc.removeEventListener("mouseup", prevUp, true);
+            if (prevUp) window.removeEventListener("mouseup", prevUp, true);
+            if (prevMove) window.removeEventListener("mousemove", prevMove, true);
+            if (prevPointerMove) window.removeEventListener("pointermove", prevPointerMove, true);
             if (prevEnter) {
               upperCanvas.removeEventListener("mouseenter", prevEnter, true);
               if (lowerCanvas) lowerCanvas.removeEventListener("mouseenter", prevEnter, true);
@@ -201,18 +484,40 @@ def get_canvas_enhancement_script(
                 clientY >= targetRect.top &&
                 clientY <= targetRect.bottom;
               const nearExistingPoint = updateCursor(clientX, clientY, targetRect, inside);
+              const canvasPoint = getCanvasPoint(clientX, clientY, targetRect);
+              const nearestIndex = findNearestPointIndex(canvasPoint);
+              setDebugText(`move inside=${inside} near=${nearExistingPoint} nearest=${nearestIndex} drag=${dragPointIndex}`);
               if (!inside) {
                 lens.style.display = "none";
                 sidePanel.style.display = "none";
                 cursorOverlay.style.display = "none";
                 return;
               }
+              if (dragPointIndex >= 0 && dragStartMouse && dragStartPoint && Array.isArray(pointList[dragPointIndex])) {
+                const dx = clientX - dragStartMouse.x;
+                const dy = clientY - dragStartMouse.y;
+                const nextX = Math.max(0, Math.min(targetRect.width, dragStartPoint.x + dx));
+                const nextY = Math.max(0, Math.min(targetRect.height, dragStartPoint.y + dy));
+                pointList[dragPointIndex][0] = nextX;
+                pointList[dragPointIndex][1] = nextY;
+                setGlobalDragState({
+                  active: true,
+                  index: dragPointIndex,
+                  startMouse: dragStartMouse,
+                  startPoint: dragStartPoint,
+                });
+              }
               cursorOverlay.style.left = `${clientX - 12}px`;
               cursorOverlay.style.top = `${clientY - 12}px`;
               const overlayColor = "rgb(0,255,255)";
               if (cursorOverlayHorizontal) cursorOverlayHorizontal.style.background = overlayColor;
               if (cursorOverlayVertical) cursorOverlayVertical.style.background = overlayColor;
-              cursorOverlay.style.opacity = nearExistingPoint ? "0.25" : "1";
+              const showMoveState = dragPointIndex >= 0 || nearExistingPoint;
+              if (cursorOverlayHorizontal) cursorOverlayHorizontal.style.display = showMoveState ? "none" : "block";
+              if (cursorOverlayVertical) cursorOverlayVertical.style.display = showMoveState ? "none" : "block";
+              cursorOverlayMoveArrows.forEach((arrow) => {
+                arrow.style.display = showMoveState ? "block" : "none";
+              });
               cursorOverlay.style.transform = "scale(1)";
               cursorOverlay.style.display = "block";
 
@@ -273,9 +578,115 @@ def get_canvas_enhancement_script(
               sideContext.stroke();
             };
 
-            window.__lineMarkMoveHandler = (event) => drawAt(event.clientX, event.clientY);
-            window.__lineMarkDownHandler = (event) => drawAt(event.clientX, event.clientY);
-            window.__lineMarkUpHandler = (event) => drawAt(event.clientX, event.clientY);
+            window.__lineMarkMoveHandler = (event) => {
+              if (synthesizingPointPlacement) return;
+              drawAt(event.clientX, event.clientY);
+            };
+            window.__lineMarkPointerMoveHandler = (event) => {
+              if (synthesizingPointPlacement) return;
+              drawAt(event.clientX, event.clientY);
+            };
+            window.__lineMarkDownHandler = (event) => {
+              if (synthesizingPointPlacement) return;
+              const targetRect = upperCanvas.getBoundingClientRect();
+              const inside =
+                event.clientX >= targetRect.left &&
+                event.clientX <= targetRect.right &&
+                event.clientY >= targetRect.top &&
+                event.clientY <= targetRect.bottom;
+              if (inside) {
+                const canvasPoint = getCanvasPoint(event.clientX, event.clientY, targetRect);
+                const nearestIndex = findNearestPointIndex(canvasPoint);
+                setDebugText(`down inside=${inside} nearest=${nearestIndex} drag=${dragPointIndex}`);
+                if (nearestIndex >= 0) {
+                  dragPointIndex = nearestIndex;
+                  dragStartMouse = { x: event.clientX, y: event.clientY };
+                  dragStartPoint = {
+                    x: Number(pointList[nearestIndex][0] || canvasPoint.x),
+                    y: Number(pointList[nearestIndex][1] || canvasPoint.y),
+                  };
+                  setGlobalDragState({
+                    active: true,
+                    index: dragPointIndex,
+                    startMouse: dragStartMouse,
+                    startPoint: dragStartPoint,
+                  });
+                  if (event && typeof event.preventDefault === "function") event.preventDefault();
+                  if (event && typeof event.stopPropagation === "function") event.stopPropagation();
+                }
+              }
+              drawAt(event.clientX, event.clientY);
+            };
+            const handlePointerRelease = (event) => {
+              if (synthesizingPointPlacement) return;
+              if (dragPointIndex >= 0) {
+                const targetRect = upperCanvas.getBoundingClientRect();
+                const inside =
+                  event.clientX >= targetRect.left &&
+                  event.clientX <= targetRect.right &&
+                  event.clientY >= targetRect.top &&
+                  event.clientY <= targetRect.bottom;
+                if (inside) {
+                  const releaseCanvasPoint = Array.isArray(pointList[dragPointIndex])
+                    ? { x: Number(pointList[dragPointIndex][0] || 0), y: Number(pointList[dragPointIndex][1] || 0) }
+                    : getCanvasPoint(event.clientX, event.clientY, targetRect);
+                  const startCanvasPoint = dragStartPoint
+                    ? { x: Number(dragStartPoint.x || 0), y: Number(dragStartPoint.y || 0) }
+                    : releaseCanvasPoint;
+                  const dispatchAtCanvasPoint = (canvasPoint) => {
+                    const clientX = targetRect.left + canvasPoint.x;
+                    const clientY = targetRect.top + canvasPoint.y;
+                    const pointerInit = {
+                      bubbles: true,
+                      cancelable: true,
+                      view: frame.contentWindow,
+                      clientX,
+                      clientY,
+                      button: 0,
+                    };
+                    const targetNode = doc.elementFromPoint(clientX, clientY) || upperCanvas;
+                    const dispatchSequence = (node) => {
+                      if (!node || typeof node.dispatchEvent !== "function") return;
+                      try {
+                        if (typeof frame.contentWindow.PointerEvent === "function") {
+                          node.dispatchEvent(new PointerEvent("pointerdown", pointerInit));
+                          node.dispatchEvent(new PointerEvent("pointerup", pointerInit));
+                        }
+                      } catch (error) {}
+                      try { node.dispatchEvent(new MouseEvent("mousedown", pointerInit)); } catch (error) {}
+                      try { node.dispatchEvent(new MouseEvent("mouseup", pointerInit)); } catch (error) {}
+                      try { node.dispatchEvent(new MouseEvent("click", pointerInit)); } catch (error) {}
+                    };
+                    dispatchSequence(targetNode);
+                    if (targetNode !== upperCanvas) dispatchSequence(upperCanvas);
+                    if (lowerCanvas && targetNode !== lowerCanvas) dispatchSequence(lowerCanvas);
+                    return { clientX, clientY, targetNode };
+                  };
+                  const pointerInit = {
+                    bubbles: true,
+                    cancelable: true,
+                    view: frame.contentWindow,
+                    clientX: targetRect.left + releaseCanvasPoint.x,
+                    clientY: targetRect.top + releaseCanvasPoint.y,
+                    button: 0,
+                  };
+                  synthesizingPointPlacement = true;
+                  try {
+                    // Two-step signal: (1) source point click arms move, (2) destination click commits move.
+                    dispatchAtCanvasPoint(startCanvasPoint);
+                    const releaseResult = dispatchAtCanvasPoint(releaseCanvasPoint);
+                    setDebugText(`up commit drag=${dragPointIndex} target=${releaseResult.targetNode && releaseResult.targetNode.tagName ? releaseResult.targetNode.tagName : "?"} x=${Math.round(releaseResult.clientX)} y=${Math.round(releaseResult.clientY)}`);
+                  } catch (error) {}
+                  synthesizingPointPlacement = false;
+                }
+              }
+              dragPointIndex = -1;
+              dragStartMouse = null;
+              dragStartPoint = null;
+              setGlobalDragState({ active: false, index: -1, startMouse: null, startPoint: null });
+              drawAt(event.clientX, event.clientY);
+            };
+            window.__lineMarkUpHandler = (event) => handlePointerRelease(event);
             window.__lineMarkCanvasEnterHandler = () => {
               applyCursorStyle("crosshair");
             };
@@ -284,8 +695,12 @@ def get_canvas_enhancement_script(
               cursorOverlay.style.display = "none";
             };
             doc.addEventListener("mousemove", window.__lineMarkMoveHandler, true);
+            doc.addEventListener("pointermove", window.__lineMarkPointerMoveHandler, true);
             doc.addEventListener("mousedown", window.__lineMarkDownHandler, true);
             doc.addEventListener("mouseup", window.__lineMarkUpHandler, true);
+            window.addEventListener("mousemove", window.__lineMarkMoveHandler, true);
+            window.addEventListener("pointermove", window.__lineMarkPointerMoveHandler, true);
+            window.addEventListener("mouseup", window.__lineMarkUpHandler, true);
             upperCanvas.addEventListener("mouseenter", window.__lineMarkCanvasEnterHandler, true);
             upperCanvas.addEventListener("mouseleave", window.__lineMarkCanvasLeaveHandler, true);
             if (lowerCanvas) {
