@@ -507,8 +507,8 @@ def get_canvas_enhancement_script(
                   startPoint: dragStartPoint,
                 });
               }
-              cursorOverlay.style.left = `${clientX - 12}px`;
-              cursorOverlay.style.top = `${clientY - 12}px`;
+              cursorOverlay.style.left = `${clientX - 11.5}px`;
+              cursorOverlay.style.top = `${clientY - 11.5}px`;
               const overlayColor = "rgb(0,255,255)";
               if (cursorOverlayHorizontal) cursorOverlayHorizontal.style.background = overlayColor;
               if (cursorOverlayVertical) cursorOverlayVertical.style.background = overlayColor;
@@ -524,8 +524,10 @@ def get_canvas_enhancement_script(
               const sxScale = providedImage.naturalWidth / Math.max(1, targetRect.width);
               const syScale = providedImage.naturalHeight / Math.max(1, targetRect.height);
               const sample = (radius * 2) / zoom;
-              const sampleX = (clientX - targetRect.left) * sxScale;
-              const sampleY = (clientY - targetRect.top) * syScale;
+              // Sub-pixel bias keeps zoom sampling aligned with the custom cursor center.
+              const sampleBiasPx = -0.5;
+              const sampleX = (clientX - targetRect.left + sampleBiasPx) * sxScale;
+              const sampleY = (clientY - targetRect.top + sampleBiasPx) * syScale;
               const sampleW = Math.max(2, sample * sxScale);
               const sampleH = Math.max(2, sample * syScale);
               const srcX = sampleX - sampleW / 2;
@@ -628,14 +630,19 @@ def get_canvas_enhancement_script(
                   event.clientY <= targetRect.bottom;
                 if (inside) {
                   const releaseCanvasPoint = Array.isArray(pointList[dragPointIndex])
-                    ? { x: Number(pointList[dragPointIndex][0] || 0), y: Number(pointList[dragPointIndex][1] || 0) }
+                    ? {
+                        x: Math.max(0, Math.min(targetRect.width, event.clientX - targetRect.left)),
+                        y: Math.max(0, Math.min(targetRect.height, event.clientY - targetRect.top)),
+                      }
                     : getCanvasPoint(event.clientX, event.clientY, targetRect);
                   const startCanvasPoint = dragStartPoint
                     ? { x: Number(dragStartPoint.x || 0), y: Number(dragStartPoint.y || 0) }
                     : releaseCanvasPoint;
                   const dispatchAtCanvasPoint = (canvasPoint) => {
-                    const clientX = targetRect.left + canvasPoint.x;
-                    const clientY = targetRect.top + canvasPoint.y;
+                    const canvasX = Number(canvasPoint.x || 0);
+                    const canvasY = Number(canvasPoint.y || 0);
+                    const clientX = targetRect.left + canvasX;
+                    const clientY = targetRect.top + canvasY;
                     const pointerInit = {
                       bubbles: true,
                       cancelable: true,
@@ -661,14 +668,6 @@ def get_canvas_enhancement_script(
                     if (targetNode !== upperCanvas) dispatchSequence(upperCanvas);
                     if (lowerCanvas && targetNode !== lowerCanvas) dispatchSequence(lowerCanvas);
                     return { clientX, clientY, targetNode };
-                  };
-                  const pointerInit = {
-                    bubbles: true,
-                    cancelable: true,
-                    view: frame.contentWindow,
-                    clientX: targetRect.left + releaseCanvasPoint.x,
-                    clientY: targetRect.top + releaseCanvasPoint.y,
-                    button: 0,
                   };
                   synthesizingPointPlacement = true;
                   try {
