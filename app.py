@@ -215,6 +215,17 @@ with right_col:
         st.session_state["line_mark_adjusted_points"] = adjusted_points
         st.session_state["line_mark_stage"] = "border"
         st.rerun()
+    if stage_action == "modify":
+        # Return to point-edit mode without wiping existing points.
+        editable_points = list(points)
+        if canvas_scale < 1.0:
+            editable_points = [(x_value * canvas_scale, y_value * canvas_scale) for x_value, y_value in editable_points]
+        st.session_state["line_mark_canvas_points"] = editable_points
+        st.session_state.pop("line_mark_locked_points", None)
+        st.session_state.pop("line_mark_stage", None)
+        st.session_state.pop("line_mark_adjusted_points", None)
+        st.session_state["line_mark_canvas_nonce"] = int(st.session_state.get("line_mark_canvas_nonce", 0)) + 1
+        st.rerun()
     if stage_action == "back":
         st.session_state["line_mark_stage"] = "lines"
         st.rerun()

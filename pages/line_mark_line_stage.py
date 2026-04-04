@@ -10,11 +10,8 @@ def render_stage_actions(stage: str, clear_points: Callable[[], None], reset_lin
             clear_points()
             return "cleared"
     with action_cols[1]:
-        if st.button("Re-mark points"):
-            reset_line_controls()
-            _clear_marking_state()
-            st.rerun()
-            return "remark"
+        if st.button("Modify points"):
+            return "modify"
     with action_cols[2]:
         if stage == "lines" and st.button("Continue to inner border stage"):
             return "continue"
