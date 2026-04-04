@@ -1,6 +1,21 @@
 import streamlit as st
 
 
+def apply_page_chrome() -> None:
+    st.markdown(
+        """
+        <style>
+        section[data-testid="stSidebar"] {display: none !important;}
+        div[data-testid="stSidebarNav"] {display: none !important;}
+        div[data-testid="collapsedControl"] {display: none !important;}
+        .block-container {padding-top: 0.25rem !important;}
+        h1 {margin-top: 0 !important;}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def inject_styles() -> None:
     st.markdown(
         """

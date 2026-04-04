@@ -1,7 +1,6 @@
 import base64
 import hashlib
 import io
-import importlib
 import sys
 from pathlib import Path
 
@@ -12,33 +11,19 @@ from PIL import Image
 from streamlit_drawable_canvas import st_canvas
 
 # Streamlit Cloud can run this page as entrypoint, so ensure repo root is importable.
-ROOT_DIR = Path(__file__).resolve().parents[1]
+ROOT_DIR = Path(__file__).resolve().parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from border_measurement import calculate_ratios_from_bounds
+import app_ui
 from pages import line_mark_line_stage as line_stage_ui
+from pages import line_mark_page_helpers as page_helpers
 from pages import line_mark_point_stage as point_stage
 from pages import line_mark_state as line_mark_state
 from pages import line_mark_utils as line_utils
 from pages.line_mark_warp import get_cached_warped_card
 
-try:
-    line_mark_state = importlib.reload(line_mark_state)
-except ImportError:
-    pass
-try:
-    line_stage_ui = importlib.reload(line_stage_ui)
-except ImportError:
-    pass
-try:
-    point_stage = importlib.reload(point_stage)
-except ImportError:
-    pass
-try:
-    line_utils = importlib.reload(line_utils)
-except ImportError:
-    pass
 line_utils.apply_streamlit_canvas_compatibility()
 
 initialize_line_mark_defaults = line_mark_state.initialize_line_mark_defaults
@@ -48,8 +33,9 @@ reset_line_controls = getattr(line_mark_state, "reset_line_controls", lambda: No
 reset_line_mark_session_state = getattr(line_mark_state, "reset_line_mark_session_state", lambda: None)
 
 
-st.set_page_config(page_title="Line Mark Mode", layout="wide", initial_sidebar_state="collapsed")
-st.title("Line Mark Mode")
+st.set_page_config(page_title="TCG centering tool", layout="wide", initial_sidebar_state="collapsed")
+app_ui.apply_page_chrome()
+st.title("TCG centering tool")
 st.caption("Click 12 points: top(3), right(3), bottom(3), left(3).")
 upload_col, info_col = st.columns(2, gap="small")
 with upload_col:
@@ -97,13 +83,6 @@ with right_col:
     st.markdown(stage_heading)
     zoom_factor_value = int(st.number_input("Zoom magnification", min_value=2, max_value=12, value=5, step=1, key="line_zoom_factor"))
 
-
-def _rgb_array_to_data_url(image_array: np.ndarray) -> str:
-    image_buffer = io.BytesIO()
-    Image.fromarray(image_array).save(image_buffer, format="PNG")
-    return f"data:image/png;base64,{base64.b64encode(image_buffer.getvalue()).decode('ascii')}"
-
-
 def clear_all_marked_points() -> None:
     reset_line_controls()
     line_stage_ui.clear_marking_state()
@@ -123,6 +102,7 @@ if locked_points is None:
             stroke_width=1,
             stroke_color="#00FFFF",
             background_image=canvas_background,
+            display_toolbar=False,
             update_streamlit=True,
             drawing_mode=canvas_drawing_mode,
             point_display_radius=0,
@@ -170,14 +150,9 @@ if locked_points is None:
 
 points = list(locked_points)
 stage = st.session_state.get("line_mark_stage", "lines")
-top_line_y = int(st.session_state.get("line_top_y", 0))
-right_line_x = int(st.session_state.get("line_right_x", 0))
-bottom_line_y = int(st.session_state.get("line_bottom_y", 0))
-left_line_x = int(st.session_state.get("line_left_x", 0))
-top_line_angle = float(st.session_state.get("line_top_angle", 0.0))
-right_line_angle = float(st.session_state.get("line_right_angle", 0.0))
-bottom_line_angle = float(st.session_state.get("line_bottom_angle", 0.0))
-left_line_angle = float(st.session_state.get("line_left_angle", 0.0))
+top_line_y, right_line_x, bottom_line_y, left_line_x, top_line_angle, right_line_angle, bottom_line_angle, left_line_angle = (
+    page_helpers.get_line_controls_from_state()
+)
 adjusted_points = line_utils.line_controlled_points(
     points,
     top_line_y,
@@ -197,14 +172,9 @@ with right_col:
             line_stage_ui.render_line_stage_controls(persistent_int_input, persistent_float_input)
         )
     else:
-        top_line_y = int(st.session_state.get("line_top_y", 0))
-        right_line_x = int(st.session_state.get("line_right_x", 0))
-        bottom_line_y = int(st.session_state.get("line_bottom_y", 0))
-        left_line_x = int(st.session_state.get("line_left_x", 0))
-        top_line_angle = float(st.session_state.get("line_top_angle", 0.0))
-        right_line_angle = float(st.session_state.get("line_right_angle", 0.0))
-        bottom_line_angle = float(st.session_state.get("line_bottom_angle", 0.0))
-        left_line_angle = float(st.session_state.get("line_left_angle", 0.0))
+        top_line_y, right_line_x, bottom_line_y, left_line_x, top_line_angle, right_line_angle, bottom_line_angle, left_line_angle = (
+            page_helpers.get_line_controls_from_state()
+        )
         adjusted_points = line_utils.line_controlled_points(
             points,
             top_line_y,
@@ -222,49 +192,20 @@ with right_col:
         st.session_state["line_mark_stage"] = "border"
         st.rerun()
     if stage_action == "modify":
-        # Return to point-edit mode without wiping existing points.
-        editable_points = list(points)
-        if canvas_scale < 1.0:
-            editable_points = [(x_value * canvas_scale, y_value * canvas_scale) for x_value, y_value in editable_points]
-        st.session_state["line_mark_canvas_points"] = editable_points
-        st.session_state.pop("line_mark_locked_points", None)
-        st.session_state.pop("line_mark_stage", None)
-        st.session_state.pop("line_mark_adjusted_points", None)
-        st.session_state["line_mark_canvas_nonce"] = int(st.session_state.get("line_mark_canvas_nonce", 0)) + 1
-        st.rerun()
+        page_helpers.return_to_point_edit(points, canvas_scale)
     if stage_action == "back":
         st.session_state["line_mark_stage"] = "lines"
         st.rerun()
 with right_col:
     if stage == "lines":
         with left_col:
-            outer_zoom_mode = st.session_state.get("line_outer_zoom_mode", "full")
-            line_preview_thin = line_utils.select_zoomed_line_preview(
+            page_helpers.render_outer_line_preview(
                 image_rgb,
                 adjusted_points,
-                outer_zoom_mode,
-                padding=12,
-                line_bgr=line_utils.border_color(outer_line_color_label),
-                line_thickness=1,
+                outer_line_color_label,
+                zoom_factor_value,
+                line_utils,
             )
-            line_preview_thick = line_utils.select_zoomed_line_preview(
-                image_rgb,
-                adjusted_points,
-                outer_zoom_mode,
-                padding=12,
-                line_bgr=line_utils.border_color(outer_line_color_label),
-                line_thickness=5,
-                render_scale=2,
-            )
-            use_thin_default = outer_zoom_mode != "full"
-            default_line_image = line_preview_thin if use_thin_default else line_preview_thin
-            hover_thick_image = line_preview_thin if use_thin_default else line_preview_thick
-            st.image(default_line_image, caption="Line stage zoom: outer lines with 12px margin.", width="content")
-            line_utils.force_stage_hover_line_swap(
-                thin_image_url=_rgb_array_to_data_url(line_preview_thin),
-                thick_image_url=_rgb_array_to_data_url(hover_thick_image),
-            )
-            line_utils.force_stage_image_zoom(zoom_factor=zoom_factor_value)
         st.stop()
 
 final_points = st.session_state.get("line_mark_adjusted_points", adjusted_points)
@@ -274,55 +215,11 @@ if warped_card is None:
         st.error("Could not build card edges from points. Try clearing and re-marking.")
     st.stop()
 
-card_height, card_width = warped_card.shape[:2]
-base_left, base_top = 30, 30
-base_right, base_bottom = max(card_width - 31, base_left + 1), max(card_height - 31, base_top + 1)
-
 with right_col:
-    nudge_top, nudge_right, nudge_bottom, nudge_left, color_label, zoom_mode = line_utils.render_inner_border_controls()
-
-inner_left = max(1, min(base_left + nudge_left, card_width - 2))
-inner_right = max(inner_left + 1, min(base_right - nudge_right, card_width - 1))
-inner_top = max(1, min(base_top + nudge_top, card_height - 2))
-inner_bottom = max(inner_top + 1, min(base_bottom - nudge_bottom, card_height - 1))
-
-result = calculate_ratios_from_bounds(card_width, card_height, inner_left, inner_right, inner_top, inner_bottom)
-visualized = cv2.cvtColor(warped_card, cv2.COLOR_BGR2RGB)
-visualized_thin = line_utils.draw_visible_inner_border(
-    visualized, inner_left, inner_top, inner_right, inner_bottom, line_utils.border_color(color_label), border_thickness=1
-)
-visualized_thick = line_utils.draw_visible_inner_border(
-    visualized,
-    inner_left,
-    inner_top,
-    inner_right,
-    inner_bottom,
-    line_utils.border_color(color_label),
-    border_thickness=5,
-    render_scale=2,
-)
-display_visual_thin = line_utils.select_zoomed_inner_preview(
-    visualized_thin, card_width, card_height, inner_left, inner_right, inner_top, inner_bottom, zoom_mode
-)
-display_visual_thick = line_utils.select_zoomed_inner_preview(
-    visualized_thick, card_width, card_height, inner_left, inner_right, inner_top, inner_bottom, zoom_mode
-)
-
-with left_col:
-    stage_image_col, stage_summary_col = st.columns([4, 2], gap="small")
-    with stage_image_col:
-        use_thin_default = zoom_mode != "full"
-        default_inner_image = display_visual_thin if use_thin_default else display_visual_thin
-        hover_inner_image = display_visual_thin if use_thin_default else display_visual_thick
-        st.image(
-            default_inner_image,
-            caption="Full card by default. Top/Bottom inputs zoom 50% width, Left/Right inputs zoom 50% height.",
-            width="content",
+    with left_col:
+        page_helpers.render_inner_border_result_view(
+            warped_card,
+            zoom_factor_value,
+            calculate_ratios_from_bounds,
+            line_utils,
         )
-        line_utils.force_stage_hover_line_swap(
-            thin_image_url=_rgb_array_to_data_url(display_visual_thin),
-            thick_image_url=_rgb_array_to_data_url(hover_inner_image),
-        )
-        line_utils.force_stage_image_zoom(zoom_factor=zoom_factor_value)
-    with stage_summary_col:
-        line_utils.render_result_summary(result)

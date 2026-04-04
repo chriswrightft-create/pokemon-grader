@@ -6,6 +6,13 @@ from typing import Optional
 import streamlit.elements.image as streamlit_image
 from pages.line_mark_canvas_js import get_canvas_enhancement_script, get_stage_hover_swap_script, get_stage_image_zoom_script
 from pages.line_mark_preview import border_color, draw_visible_inner_border, edge_preview, line_stage_zoom_preview, select_zoomed_inner_preview
+from pages.line_mark_constants import (
+    BADGE_ORDER,
+    BGS_BLACK_LABEL_THRESHOLD,
+    CENTERING_THRESHOLDS,
+    INNER_LINE_COLOR_OPTIONS,
+    PRISTINE_THRESHOLDS,
+)
 
 
 def apply_streamlit_canvas_compatibility() -> None:
@@ -151,7 +158,7 @@ def render_inner_border_controls() -> tuple[int, int, int, int, str, str]:
         bottom_value = _persistent_int_input("Bottom", "line_inner_bottom", "line_inner_bottom_widget")
     with cols[3]:
         left_value = _persistent_int_input("Left", "line_inner_left", "line_inner_left_widget")
-    color_label = st.selectbox("Inner border color", ["Red", "Green", "Blue", "Black"], index=0)
+    color_label = st.selectbox("Inner border color", list(INNER_LINE_COLOR_OPTIONS), index=0)
     zoom_mode = st.session_state.get("line_inner_zoom_mode", "full")
     return top_value, right_value, bottom_value, left_value, color_label, zoom_mode
 
@@ -181,25 +188,14 @@ def render_result_summary(result) -> None:
 
 
 def render_grader_badges(result) -> None:
-    centering_thresholds = {
-        "PSA": {"min": 45, "max": 55},
-        "TAG": {"min": 45, "max": 55},
-        "BGS": {"min": 45, "max": 55},
-        "ACE": {"min": 40, "max": 60},
-    }
-    pristine_thresholds = {
-        "TAG": {"min": 49, "max": 51},
-        "BGS": {"min": 48, "max": 52},
-    }
-    bgs_black_label_threshold = {"min": 50, "max": 50}
     badge_markup = []
-    for grader_label, threshold in centering_thresholds.items():
+    for grader_label, threshold in CENTERING_THRESHOLDS.items():
         badge_color = "#10b981" if _passes_centering_threshold(result, threshold) else "#ef4444"
         display_label = grader_label
-        if grader_label == "BGS" and _passes_centering_threshold(result, bgs_black_label_threshold):
+        if grader_label == "BGS" and _passes_centering_threshold(result, BGS_BLACK_LABEL_THRESHOLD):
             display_label = "BGS BLACK"
             badge_color = "#111111"
-        elif grader_label in pristine_thresholds and _passes_centering_threshold(result, pristine_thresholds[grader_label]):
+        elif grader_label in PRISTINE_THRESHOLDS and _passes_centering_threshold(result, PRISTINE_THRESHOLDS[grader_label]):
             display_label = f"{grader_label} PRISTINE"
         badge_markup.append(
             (
@@ -212,7 +208,7 @@ def render_grader_badges(result) -> None:
         )
     ordered_badges = sorted(
         badge_markup,
-        key=lambda item: ["PSA", "TAG", "BGS", "ACE"].index(item[0]) if item[0] in {"PSA", "TAG", "BGS", "ACE"} else 999,
+        key=lambda item: BADGE_ORDER.index(item[0]) if item[0] in BADGE_ORDER else 999,
     )
     badges_html = "".join(markup for _, markup in ordered_badges)
     st.markdown(

@@ -1,6 +1,7 @@
 from typing import Callable, Optional
 
 import streamlit as st
+from pages.line_mark_constants import OUTER_LINE_COLOR_OPTIONS
 
 
 def render_stage_actions(stage: str, clear_points: Callable[[], None], reset_line_controls: Callable[[], None]) -> Optional[str]:
@@ -29,7 +30,7 @@ def render_line_stage_controls(
     persistent_float_input: Callable[[str, str, str], float],
 ) -> str:
     st.caption("Outer line zoom")
-    outer_line_color_label = st.selectbox("Outer line color", ["Red", "Green", "Blue", "Black"], key="line_outer_color_label")
+    outer_line_color_label = st.selectbox("Outer line color", list(OUTER_LINE_COLOR_OPTIONS), key="line_outer_color_label")
     _render_zoom_buttons()
     st.caption("Line controls: drag on axis + rotate")
     _render_axis_controls(persistent_int_input)

@@ -5,6 +5,7 @@ from typing import Tuple
 
 import cv2
 import numpy as np
+from pages.line_mark_constants import INNER_FRAME_DETECTION
 
 
 @dataclass(frozen=True)
@@ -107,12 +108,24 @@ def _detect_inner_frame(card_image: np.ndarray) -> Tuple[int, int, int, int]:
     top_dist = np.linalg.norm(row_mean - top_ref, axis=1)
     bottom_dist = np.linalg.norm(row_mean - bottom_ref, axis=1)
 
-    left_window = (int(width * 0.01), int(width * 0.16))
-    right_window = (int(width * 0.84), int(width * 0.99))
-    top_window = (int(height * 0.01), int(height * 0.16))
-    bottom_window = (int(height * 0.84), int(height * 0.99))
+    left_window = (
+        int(width * INNER_FRAME_DETECTION.left_window_start_ratio),
+        int(width * INNER_FRAME_DETECTION.left_window_end_ratio),
+    )
+    right_window = (
+        int(width * INNER_FRAME_DETECTION.right_window_start_ratio),
+        int(width * INNER_FRAME_DETECTION.right_window_end_ratio),
+    )
+    top_window = (
+        int(height * INNER_FRAME_DETECTION.top_window_start_ratio),
+        int(height * INNER_FRAME_DETECTION.top_window_end_ratio),
+    )
+    bottom_window = (
+        int(height * INNER_FRAME_DETECTION.bottom_window_start_ratio),
+        int(height * INNER_FRAME_DETECTION.bottom_window_end_ratio),
+    )
 
-    color_threshold = 14.0
+    color_threshold = INNER_FRAME_DETECTION.color_threshold
     left_by_color = _color_transition_index(left_dist, color_threshold, left_window[0], left_window[1])
     right_by_color = _color_transition_index(
         right_dist,
