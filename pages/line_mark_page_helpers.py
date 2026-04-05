@@ -85,7 +85,13 @@ def render_inner_border_result_view(
     base_left, base_top = 30, 30
     base_right, base_bottom = max(card_width - 31, base_left + 1), max(card_height - 31, base_top + 1)
 
-    nudge_top, nudge_right, nudge_bottom, nudge_left, color_label, zoom_mode = line_utils.render_inner_border_controls()
+    nudge_top = int(st.session_state.get("line_inner_top", 0))
+    nudge_right = int(st.session_state.get("line_inner_right", 0))
+    nudge_bottom = int(st.session_state.get("line_inner_bottom", 0))
+    nudge_left = int(st.session_state.get("line_inner_left", 0))
+    color_label = str(st.session_state.get("line_inner_color_label", "Red"))
+    zoom_mode = str(st.session_state.get("line_inner_zoom_mode", "full"))
+
     inner_left = max(1, min(base_left + nudge_left, card_width - 2))
     inner_right = max(inner_left + 1, min(base_right - nudge_right, card_width - 1))
     inner_top = max(1, min(base_top + nudge_top, card_height - 2))

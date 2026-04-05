@@ -196,17 +196,16 @@ with right_col:
     if stage_action == "back":
         st.session_state["line_mark_stage"] = "lines"
         st.rerun()
-with right_col:
-    if stage == "lines":
-        with left_col:
-            page_helpers.render_outer_line_preview(
-                image_rgb,
-                adjusted_points,
-                outer_line_color_label,
-                zoom_factor_value,
-                line_utils,
-            )
-        st.stop()
+if stage == "lines":
+    with left_col:
+        page_helpers.render_outer_line_preview(
+            image_rgb,
+            adjusted_points,
+            outer_line_color_label,
+            zoom_factor_value,
+            line_utils,
+        )
+    st.stop()
 
 final_points = st.session_state.get("line_mark_adjusted_points", adjusted_points)
 warped_card = get_cached_warped_card(image_bytes, image_bgr, final_points, line_utils.warp_from_edges)
@@ -216,10 +215,18 @@ if warped_card is None:
     st.stop()
 
 with right_col:
-    with left_col:
-        page_helpers.render_inner_border_result_view(
-            warped_card,
-            zoom_factor_value,
-            calculate_ratios_from_bounds,
-            line_utils,
-        )
+    nudge_top, nudge_right, nudge_bottom, nudge_left, color_label, zoom_mode = line_utils.render_inner_border_controls()
+    st.session_state["line_inner_top"] = int(nudge_top)
+    st.session_state["line_inner_right"] = int(nudge_right)
+    st.session_state["line_inner_bottom"] = int(nudge_bottom)
+    st.session_state["line_inner_left"] = int(nudge_left)
+    st.session_state["line_inner_color_label"] = str(color_label)
+    st.session_state["line_inner_zoom_mode"] = str(zoom_mode)
+
+with left_col:
+    page_helpers.render_inner_border_result_view(
+        warped_card,
+        zoom_factor_value,
+        calculate_ratios_from_bounds,
+        line_utils,
+    )
