@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import io
 from pathlib import Path
 
@@ -8,6 +7,7 @@ import streamlit as st
 from PIL import Image, ImageSequence
 
 _QUICKSTART_GIF = Path(__file__).resolve().parent / "assets" / "quickstart.gif"
+_QUICKSTART_DISPLAY_GIF = Path(__file__).resolve().parent / "assets" / "quickstart_display.gif"
 _QUICKSTART_DISPLAY_BINARY_BYTE_CAP = 1_900_000
 _QUICKSTART_DISPLAY_PARAMETER_SEQUENCE = (
     (400, 8),
@@ -66,7 +66,9 @@ def _build_scaled_quickstart_gif_bytes(
 
 @st.cache_data(show_spinner=False)
 def read_quickstart_display_gif_bytes() -> bytes:
-    """Scaled quickstart GIF for UI (avoids huge payloads and ``/media/`` orphan races)."""
+    """Small quickstart GIF for UI (prebuilt asset on deploy; avoids huge ``data:`` HTML on Cloud)."""
+    if _QUICKSTART_DISPLAY_GIF.is_file():
+        return _QUICKSTART_DISPLAY_GIF.read_bytes()
     last_encoded: bytes = b""
     for max_bound, frame_stride in _QUICKSTART_DISPLAY_PARAMETER_SEQUENCE:
         last_encoded = _build_scaled_quickstart_gif_bytes(
@@ -79,25 +81,14 @@ def read_quickstart_display_gif_bytes() -> bytes:
     return last_encoded
 
 
-def quickstart_gif_data_url() -> str:
-    payload = read_quickstart_display_gif_bytes()
-    encoded_ascii = base64.standard_b64encode(payload).decode("ascii")
-    return f"data:image/gif;base64,{encoded_ascii}"
-
-
 def render_quickstart_gif(*, caption: str | None = None, width: str = "stretch") -> None:
-    """Show the quickstart animation without Streamlit ``/media/`` URLs."""
-    max_width_style = "100%" if width == "stretch" else "100%"
-    width_style = "100%" if width == "stretch" else "auto"
-    data_url = quickstart_gif_data_url()
-    st.markdown(
-        f'<img src="{data_url}" alt="Quickstart animation" '
-        f'style="display:block;width:{width_style};max-width:{max_width_style};'
-        'max-height:70vh;height:auto;object-fit:contain;" />',
-        unsafe_allow_html=True,
+    """Show the quickstart animation (small GIF via ``st.image`` for Cloud compatibility)."""
+    st.image(
+        read_quickstart_display_gif_bytes(),
+        output_format="GIF",
+        caption=caption,
+        width=width,
     )
-    if caption is not None:
-        st.caption(caption)
 
 
 def apply_page_chrome() -> None:
