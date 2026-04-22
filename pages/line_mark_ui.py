@@ -16,21 +16,50 @@ from pages.line_mark_constants import (
 
 
 def apply_streamlit_canvas_compatibility() -> None:
+    """Patch Streamlit's image_to_url to handle different versions and ensure canvas compatibility."""
     try:
         from streamlit.elements.lib import image_utils
-        from streamlit.elements.lib.layout_utils import LayoutConfig
-
-        needs_patch = not hasattr(streamlit_image, "image_to_url")
-        if not needs_patch:
-            needs_patch = "layout_config" in image_utils.image_to_url.__code__.co_varnames
-
-        if needs_patch:
-            def _image_to_url_compat(image, width, clamp, channels, output_format, image_id):
-                layout_config = width if hasattr(width, "width") else LayoutConfig(width=width)
-                return image_utils.image_to_url(image, layout_config, clamp, channels, output_format, image_id)
-
-            streamlit_image.image_to_url = _image_to_url_compat
-    except (ImportError, AttributeError):
+        
+        # Store the original function
+        original_image_to_url = image_utils.image_to_url
+        
+        def _image_to_url_safe_wrapper(image, *args, **kwargs):
+            """Wrapper that handles various function signatures across Streamlit versions."""
+            try:
+                # Try to call with all arguments first
+                return original_image_to_url(image, *args, **kwargs)
+            except TypeError:
+                # If that fails, try the legacy signature
+                try:
+                    from streamlit.elements.lib.layout_utils import LayoutConfig
+                    # Try to find layout_config parameter
+                    if args and hasattr(args[0], 'width'):
+                        layout_config = args[0]
+                    elif isinstance(args[0], int):
+                        layout_config = LayoutConfig(width=args[0])
+                    else:
+                        layout_config = LayoutConfig(width=None)
+                    # Call with LayoutConfig as second positional argument
+                    return original_image_to_url(image, layout_config, *(args[1:]), **kwargs)
+                except Exception:
+                    # Final fallback: return the image as-is or a data URI
+                    try:
+                        import io
+                        import base64
+                        from PIL import Image as PILImage
+                        if isinstance(image, PILImage.Image):
+                            buffer = io.BytesIO()
+                            image.save(buffer, format="PNG")
+                            return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode()}"
+                    except Exception:
+                        pass
+                    return None
+        
+        # Apply the patch
+        image_utils.image_to_url = _image_to_url_safe_wrapper
+        streamlit_image.image_to_url = _image_to_url_safe_wrapper
+    except (ImportError, AttributeError, Exception) as e:
+        # Silently fail if we can't apply the patch
         return
 
 

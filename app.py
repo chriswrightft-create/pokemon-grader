@@ -68,9 +68,12 @@ canvas_image = pil_image.resize((canvas_width, canvas_height), Image.Resampling.
 canvas_points = st.session_state.get("line_mark_canvas_points", [])
 canvas_drawing_mode = "point"
 canvas_preview = line_utils.draw_cross_markers(np.array(canvas_image), canvas_points) if canvas_points else np.array(canvas_image)
-canvas_background = Image.fromarray(canvas_preview)
+
+# Convert canvas preview to PIL Image for zoom functionality and st_canvas
+canvas_background = Image.fromarray(canvas_preview.astype(np.uint8))
 zoom_buffer = io.BytesIO()
 canvas_background.save(zoom_buffer, format="PNG")
+zoom_buffer.seek(0)
 zoom_source_url = f"data:image/png;base64,{base64.b64encode(zoom_buffer.getvalue()).decode('ascii')}"
 
 left_col, right_col = st.columns([3, 2])
@@ -90,6 +93,8 @@ def clear_all_marked_points() -> None:
 
 if locked_points is None:
     previous_points = st.session_state.get("line_mark_canvas_points", [])
+    # Generate a stable key based on the upload token to ensure canvas reinitializes on new upload
+    canvas_key_suffix = upload_token[2][:8] if upload_token else str(st.session_state.get('line_mark_canvas_nonce', 0))
     with left_col:
         line_utils.force_canvas_crosshair(
             source_image_url=zoom_source_url,
@@ -108,7 +113,7 @@ if locked_points is None:
             point_display_radius=0,
             height=canvas_height,
             width=canvas_width,
-            key=f"line_mark_canvas_{st.session_state['line_mark_canvas_nonce']}",
+            key=f"line_mark_canvas_{canvas_key_suffix}",
         )
         raw_points = line_utils.point_list_from_canvas(canvas_result.json_data)
         previous_raw_points = st.session_state.get("line_mark_canvas_raw_points", [])
