@@ -49,9 +49,13 @@ def edge_preview(
                 if clipped:
                     cv2.line(preview, clip_start, clip_end, (0, 0, 0), draw_thickness, lineType=cv2.LINE_AA)
                     cv2.line(preview, clip_start, clip_end, line_bgr, draw_thickness, lineType=cv2.LINE_AA)
+                    if draw_thickness == 1:
+                        cv2.line(preview, clip_start, clip_end, line_bgr, 1, lineType=cv2.LINE_AA)
             else:
                 cv2.line(preview, first, second, (0, 0, 0), draw_thickness, lineType=cv2.LINE_AA)
                 cv2.line(preview, first, second, line_bgr, draw_thickness, lineType=cv2.LINE_AA)
+                if draw_thickness == 1:
+                    cv2.line(preview, first, second, line_bgr, 1, lineType=cv2.LINE_AA)
             continue
         first_index, middle_index, second_index = indexes
         first_point = scaled_points[first_index]
@@ -65,6 +69,8 @@ def edge_preview(
             curve_int = np.array([(int(round(x)), int(round(y))) for x, y in curve_points], dtype=np.int32).reshape((-1, 1, 2))
             cv2.polylines(preview, [curve_int], False, (0, 0, 0), draw_thickness, lineType=cv2.LINE_AA)
             cv2.polylines(preview, [curve_int], False, line_bgr, draw_thickness, lineType=cv2.LINE_AA)
+            if draw_thickness == 1:
+                cv2.polylines(preview, [curve_int], False, line_bgr, 1, lineType=cv2.LINE_AA)
     if scale > 1:
         original_height, original_width = image_rgb.shape[:2]
         return cv2.resize(preview, (original_width, original_height), interpolation=cv2.INTER_AREA)
@@ -264,6 +270,8 @@ def draw_visible_inner_border(
         return cv2.resize(outlined, (image_width, image_height), interpolation=cv2.INTER_AREA)
     outlined = image_rgb.copy()
     cv2.rectangle(outlined, (left_x, top_y), (right_x, bottom_y), border_bgr, border_thickness, lineType=cv2.LINE_AA)
+    if border_thickness == 1:
+        cv2.rectangle(outlined, (left_x, top_y), (right_x, bottom_y), border_bgr, 1, lineType=cv2.LINE_AA)
     return outlined
 
 

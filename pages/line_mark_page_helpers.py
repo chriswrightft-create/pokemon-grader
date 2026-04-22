@@ -1,13 +1,6 @@
 import cv2
 import numpy as np
 import streamlit as st
-from PIL import Image
-
-from pages.streamlit_canvas_image import jpeg_data_url_for_component_html
-
-
-def rgb_array_to_data_url(image_array: np.ndarray) -> str:
-    return jpeg_data_url_for_component_html(image_array, initial_quality=82)
 
 
 def get_line_controls_from_state() -> tuple[int, int, int, int, float, float, float, float]:
@@ -43,7 +36,7 @@ def render_outer_line_preview(
     line_utils,
 ) -> None:
     outer_zoom_mode = st.session_state.get("line_outer_zoom_mode", "full")
-    line_preview_thin = line_utils.select_zoomed_line_preview(
+    line_preview = line_utils.select_zoomed_line_preview(
         image_rgb,
         adjusted_points,
         outer_zoom_mode,
@@ -51,23 +44,7 @@ def render_outer_line_preview(
         line_bgr=line_utils.border_color(outer_line_color_label),
         line_thickness=1,
     )
-    line_preview_thick = line_utils.select_zoomed_line_preview(
-        image_rgb,
-        adjusted_points,
-        outer_zoom_mode,
-        padding=12,
-        line_bgr=line_utils.border_color(outer_line_color_label),
-        line_thickness=5,
-        render_scale=2,
-    )
-    use_thin_default = outer_zoom_mode != "full"
-    default_line_image = line_preview_thin if use_thin_default else line_preview_thin
-    hover_thick_image = line_preview_thin if use_thin_default else line_preview_thick
-    st.image(default_line_image, caption="Line stage zoom: outer lines with 12px margin.", width="content")
-    line_utils.force_stage_hover_line_swap(
-        thin_image_url=rgb_array_to_data_url(line_preview_thin),
-        thick_image_url=rgb_array_to_data_url(hover_thick_image),
-    )
+    st.image(line_preview, caption="Line stage zoom: outer lines with 12px margin.", width="content")
     line_utils.force_stage_image_zoom(zoom_factor=zoom_factor_value)
 
 
@@ -95,39 +72,25 @@ def render_inner_border_result_view(
 
     result = calculate_ratios_from_bounds(card_width, card_height, inner_left, inner_right, inner_top, inner_bottom)
     visualized = cv2.cvtColor(warped_card, cv2.COLOR_BGR2RGB)
-    visualized_thin = line_utils.draw_visible_inner_border(
-        visualized, inner_left, inner_top, inner_right, inner_bottom, line_utils.border_color(color_label), border_thickness=1
-    )
-    visualized_thick = line_utils.draw_visible_inner_border(
+    visualized_inner = line_utils.draw_visible_inner_border(
         visualized,
         inner_left,
         inner_top,
         inner_right,
         inner_bottom,
         line_utils.border_color(color_label),
-        border_thickness=5,
-        render_scale=2,
+        border_thickness=1,
     )
-    display_visual_thin = line_utils.select_zoomed_inner_preview(
-        visualized_thin, card_width, card_height, inner_left, inner_right, inner_top, inner_bottom, zoom_mode
-    )
-    display_visual_thick = line_utils.select_zoomed_inner_preview(
-        visualized_thick, card_width, card_height, inner_left, inner_right, inner_top, inner_bottom, zoom_mode
+    display_visual = line_utils.select_zoomed_inner_preview(
+        visualized_inner, card_width, card_height, inner_left, inner_right, inner_top, inner_bottom, zoom_mode
     )
 
     stage_image_col, stage_summary_col = st.columns([4, 2], gap="small")
     with stage_image_col:
-        use_thin_default = zoom_mode != "full"
-        default_inner_image = display_visual_thin if use_thin_default else display_visual_thin
-        hover_inner_image = display_visual_thin if use_thin_default else display_visual_thick
         st.image(
-            default_inner_image,
+            display_visual,
             caption="Full card by default. Top/Bottom inputs zoom 50% width, Left/Right inputs zoom 50% height.",
             width="content",
-        )
-        line_utils.force_stage_hover_line_swap(
-            thin_image_url=rgb_array_to_data_url(display_visual_thin),
-            thick_image_url=rgb_array_to_data_url(hover_inner_image),
         )
         line_utils.force_stage_image_zoom(zoom_factor=zoom_factor_value)
     with stage_summary_col:
