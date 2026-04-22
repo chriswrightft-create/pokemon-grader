@@ -34,4 +34,4 @@ def inject_styles() -> None:
 
 def render_quickstart() -> None:
     st.subheader("How to use")
-    st.image("assets/quickstart.gif", caption="Quick walkthrough of initial setup.", use_container_width=True)
+    st.image("assets/quickstart.gif", caption="Quick walkthrough of initial setup.", width="stretch")

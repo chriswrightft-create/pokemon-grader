@@ -17,6 +17,7 @@ if str(ROOT_DIR) not in sys.path:
 
 from border_measurement import calculate_ratios_from_bounds
 import app_ui
+from pages.streamlit_canvas_image import pil_background_for_drawable_canvas
 from pages import line_mark_line_stage as line_stage_ui
 from pages import line_mark_page_helpers as page_helpers
 from pages import line_mark_point_stage as point_stage
@@ -68,9 +69,7 @@ canvas_image = pil_image.resize((canvas_width, canvas_height), Image.Resampling.
 canvas_points = st.session_state.get("line_mark_canvas_points", [])
 canvas_drawing_mode = "point"
 canvas_preview = line_utils.draw_cross_markers(np.array(canvas_image), canvas_points) if canvas_points else np.array(canvas_image)
-
-# Convert canvas preview to PIL Image for zoom functionality and st_canvas
-canvas_background = Image.fromarray(canvas_preview.astype(np.uint8))
+canvas_background = pil_background_for_drawable_canvas(canvas_preview)
 zoom_buffer = io.BytesIO()
 canvas_background.save(zoom_buffer, format="PNG")
 zoom_buffer.seek(0)
@@ -133,24 +132,24 @@ if locked_points is None:
         if len(points) < 12:
             row_cols = st.columns(2, gap="small")
             with row_cols[0]:
-                if st.button("Clear marked points", use_container_width=True):
+                if st.button("Clear marked points", width="stretch"):
                     clear_all_marked_points()
             st.info("Keep clicking in order: top(3), right(3), bottom(3), left(3).")
             st.caption("Quickstart")
-            st.image("assets/quickstart.gif", use_container_width=True)
+            st.image("assets/quickstart.gif", width="stretch")
             st.stop()
         row_cols = st.columns(2, gap="small")
         with row_cols[0]:
-            if st.button("Clear marked points", use_container_width=True):
+            if st.button("Clear marked points", width="stretch"):
                 clear_all_marked_points()
         with row_cols[1]:
-            if st.button("Lock points and continue", use_container_width=True):
+            if st.button("Lock points and continue", width="stretch"):
                 reset_line_controls()
                 st.session_state["line_mark_locked_points"] = points
                 st.session_state["line_mark_stage"] = "lines"
                 st.rerun()
         st.caption("Quickstart")
-        st.image("assets/quickstart.gif", use_container_width=True)
+        st.image("assets/quickstart.gif", width="stretch")
         st.stop()
 
 points = list(locked_points)

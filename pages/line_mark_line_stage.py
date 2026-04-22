@@ -8,19 +8,19 @@ def render_stage_actions(stage: str, clear_points: Callable[[], None], reset_lin
     if stage == "lines":
         action_cols = st.columns(2, gap="small")
         with action_cols[0]:
-            if st.button("Back to modify points", use_container_width=True):
+            if st.button("Back to modify points", width="stretch"):
                 return "modify"
         with action_cols[1]:
-            if st.button("Next to Inner Border", use_container_width=True):
+            if st.button("Next to Inner Border", width="stretch"):
                 return "continue"
         return None
 
     action_cols = st.columns(2, gap="small")
     with action_cols[0]:
-        if st.button("Back to modify points", use_container_width=True):
+        if st.button("Back to modify points", width="stretch"):
             return "modify"
     with action_cols[1]:
-        if st.button("Back to outer border", use_container_width=True):
+        if st.button("Back to outer border", width="stretch"):
             return "back"
     return None
 
