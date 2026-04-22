@@ -22,11 +22,10 @@ def get_canvas_enhancement_script(
       const css = `
         html, body { cursor: default; }
         canvas, .upper-canvas, .lower-canvas, .canvas-container { cursor: none !important; }
-        [class*="toolbar"], [class*="Toolbar"] { display: none !important; }
+        [class*="CanvasToolbar_"] { display: none !important; }
         button[aria-label*="undo" i], button[aria-label*="redo" i], button[aria-label*="delete" i], button[title*="Undo"], button[title*="Redo"], button[title*="Delete"] { display: none !important; }
         button, [role="button"] { color: #f3f4f6 !important; opacity: 1 !important; }
         svg, svg * { stroke: #f3f4f6 !important; fill: #f3f4f6 !important; opacity: 1 !important; }
-        img { filter: invert(1) brightness(1.35) contrast(1.1) !important; opacity: 1 !important; }
       `;
       const frames = window.parent.document.querySelectorAll("iframe");
       frames.forEach((frame) => {
@@ -69,15 +68,17 @@ def get_canvas_enhancement_script(
           applyCursorStyle("crosshair");
           const hideToolbarControls = () => {
             const toolbarSelectors = [
+              "[class*='CanvasToolbar_']",
               "div.canvas-toolbar",
               "div[class^='canvas-toolbar_']",
               "div[class*=' canvas-toolbar_']",
-              "[class*='canvas-toolbar']",
-              "div[style*='position: absolute'][style*='display: flex'][style*='z-index: 20']",
             ].join(", ");
             const toolbarNodes = Array.from(doc.querySelectorAll(toolbarSelectors));
             toolbarNodes.forEach((node) => {
               if (!node || !node.style) return;
+              if (node.closest(".canvas-container")) {
+                return;
+              }
               node.style.setProperty("display", "none", "important");
               node.style.setProperty("visibility", "hidden", "important");
               node.style.setProperty("pointer-events", "none", "important");

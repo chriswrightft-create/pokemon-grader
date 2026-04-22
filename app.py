@@ -1,4 +1,3 @@
-import base64
 import hashlib
 import io
 import sys
@@ -17,7 +16,11 @@ if str(ROOT_DIR) not in sys.path:
 from border_measurement import calculate_ratios_from_bounds
 import app_ui
 from pages.drawable_canvas_fix import install_drawable_canvas_data_url_background
-from pages.streamlit_canvas_image import pil_background_for_drawable_canvas
+from pages.streamlit_canvas_image import (
+    jpeg_data_url_for_component_html,
+    pil_background_for_drawable_canvas,
+)
+from pages import line_mark_debug
 from pages import line_mark_line_stage as line_stage_ui
 from pages import line_mark_page_helpers as page_helpers
 from pages import line_mark_point_stage as point_stage
@@ -28,8 +31,6 @@ from pages.line_mark_warp import get_cached_warped_card
 line_utils.apply_streamlit_canvas_compatibility()
 install_drawable_canvas_data_url_background()
 from streamlit_drawable_canvas import st_canvas
-
-QUICKSTART_GIF_PATH = ROOT_DIR / "assets" / "quickstart.gif"
 
 initialize_line_mark_defaults = line_mark_state.initialize_line_mark_defaults
 persistent_float_input = line_mark_state.persistent_float_input
@@ -74,10 +75,16 @@ canvas_points = st.session_state.get("line_mark_canvas_points", [])
 canvas_drawing_mode = "point"
 canvas_preview = line_utils.draw_cross_markers(np.array(canvas_image), canvas_points) if canvas_points else np.array(canvas_image)
 canvas_background = pil_background_for_drawable_canvas(canvas_preview)
-zoom_buffer = io.BytesIO()
-canvas_background.save(zoom_buffer, format="PNG")
-zoom_buffer.seek(0)
-zoom_source_url = f"data:image/png;base64,{base64.b64encode(zoom_buffer.getvalue()).decode('ascii')}"
+zoom_source_url = jpeg_data_url_for_component_html(canvas_background, initial_quality=85)
+
+drawable_png_debug = None
+if line_mark_debug.is_debug_enabled():
+    import streamlit_drawable_canvas as drawable_for_debug
+    from pages.streamlit_canvas_image import png_data_url_for_drawable_canvas as png_url_for_debug
+
+    drawable_png_debug = png_url_for_debug(
+        drawable_for_debug._resize_img(canvas_background, canvas_height, canvas_width),
+    )
 
 left_col, right_col = st.columns([3, 2])
 locked_points = st.session_state.get("line_mark_locked_points")
@@ -99,6 +106,13 @@ if locked_points is None:
     # Generate a stable key based on the upload token to ensure canvas reinitializes on new upload
     canvas_key_suffix = upload_token[2][:8] if upload_token else str(st.session_state.get('line_mark_canvas_nonce', 0))
     with left_col:
+        line_mark_debug.show_point_stage_canvas_debug(
+            canvas_background,
+            zoom_source_url,
+            canvas_width,
+            canvas_height,
+            drawable_png_debug,
+        )
         line_utils.force_canvas_crosshair(
             source_image_url=zoom_source_url,
             zoom_factor=zoom_factor_value,
@@ -140,7 +154,7 @@ if locked_points is None:
                     clear_all_marked_points()
             st.info("Keep clicking in order: top(3), right(3), bottom(3), left(3).")
             st.caption("Quickstart")
-            st.image(str(QUICKSTART_GIF_PATH), width="stretch")
+            app_ui.render_quickstart_gif(width="stretch")
             st.stop()
         row_cols = st.columns(2, gap="small")
         with row_cols[0]:
@@ -153,7 +167,7 @@ if locked_points is None:
                 st.session_state["line_mark_stage"] = "lines"
                 st.rerun()
         st.caption("Quickstart")
-        st.image(str(QUICKSTART_GIF_PATH), width="stretch")
+        app_ui.render_quickstart_gif(width="stretch")
         st.stop()
 
 points = list(locked_points)

@@ -1,17 +1,13 @@
-import base64
-import io
-
 import cv2
 import numpy as np
 import streamlit as st
 from PIL import Image
 
+from pages.streamlit_canvas_image import jpeg_data_url_for_component_html
+
 
 def rgb_array_to_data_url(image_array: np.ndarray) -> str:
-    image_buffer = io.BytesIO()
-    Image.fromarray(image_array).save(image_buffer, format="PNG")
-    encoded_image = base64.b64encode(image_buffer.getvalue()).decode("ascii")
-    return f"data:image/png;base64,{encoded_image}"
+    return jpeg_data_url_for_component_html(image_array, initial_quality=82)
 
 
 def get_line_controls_from_state() -> tuple[int, int, int, int, float, float, float, float]:

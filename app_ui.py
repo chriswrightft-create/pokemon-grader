@@ -1,8 +1,103 @@
+from __future__ import annotations
+
+import base64
+import io
 from pathlib import Path
 
 import streamlit as st
+from PIL import Image, ImageSequence
 
 _QUICKSTART_GIF = Path(__file__).resolve().parent / "assets" / "quickstart.gif"
+_QUICKSTART_DISPLAY_BINARY_BYTE_CAP = 1_900_000
+_QUICKSTART_DISPLAY_PARAMETER_SEQUENCE = (
+    (400, 8),
+    (360, 10),
+    (360, 12),
+    (320, 14),
+    (480, 12),
+    (400, 12),
+)
+
+
+def read_quickstart_gif_bytes() -> bytes:
+    """Return the full quickstart GIF bytes from disk (very large)."""
+    return _QUICKSTART_GIF.read_bytes()
+
+
+def _build_scaled_quickstart_gif_bytes(
+    source_path: Path,
+    max_bound: int,
+    frame_stride: int,
+) -> bytes:
+    rgba_frames: list[Image.Image] = []
+    frame_duration_ms_list: list[int] = []
+    with Image.open(source_path) as source_image:
+        for frame_index, frame in enumerate(ImageSequence.Iterator(source_image)):
+            if frame_index % frame_stride != 0:
+                continue
+            rgba_frame = frame.convert("RGBA")
+            width, height = rgba_frame.size
+            longest_edge = max(width, height)
+            if longest_edge > max_bound:
+                scale_ratio = max_bound / longest_edge
+                resized_width = max(1, int(width * scale_ratio))
+                resized_height = max(1, int(height * scale_ratio))
+                rgba_frame = rgba_frame.resize(
+                    (resized_width, resized_height),
+                    Image.Resampling.LANCZOS,
+                )
+            rgba_frames.append(rgba_frame)
+            frame_duration_ms_list.append(int(frame.info.get("duration", 80)))
+    if not rgba_frames:
+        raise ValueError("Quickstart GIF decoding produced no frames.")
+    gif_buffer = io.BytesIO()
+    rgba_frames[0].save(
+        gif_buffer,
+        format="GIF",
+        save_all=True,
+        append_images=rgba_frames[1:],
+        duration=frame_duration_ms_list,
+        loop=0,
+        optimize=True,
+        disposal=2,
+    )
+    return gif_buffer.getvalue()
+
+
+@st.cache_data(show_spinner=False)
+def read_quickstart_display_gif_bytes() -> bytes:
+    """Scaled quickstart GIF for UI (avoids huge payloads and ``/media/`` orphan races)."""
+    last_encoded: bytes = b""
+    for max_bound, frame_stride in _QUICKSTART_DISPLAY_PARAMETER_SEQUENCE:
+        last_encoded = _build_scaled_quickstart_gif_bytes(
+            _QUICKSTART_GIF,
+            max_bound,
+            frame_stride,
+        )
+        if len(last_encoded) <= _QUICKSTART_DISPLAY_BINARY_BYTE_CAP:
+            return last_encoded
+    return last_encoded
+
+
+def quickstart_gif_data_url() -> str:
+    payload = read_quickstart_display_gif_bytes()
+    encoded_ascii = base64.standard_b64encode(payload).decode("ascii")
+    return f"data:image/gif;base64,{encoded_ascii}"
+
+
+def render_quickstart_gif(*, caption: str | None = None, width: str = "stretch") -> None:
+    """Show the quickstart animation without Streamlit ``/media/`` URLs."""
+    max_width_style = "100%" if width == "stretch" else "100%"
+    width_style = "100%" if width == "stretch" else "auto"
+    data_url = quickstart_gif_data_url()
+    st.markdown(
+        f'<img src="{data_url}" alt="Quickstart animation" '
+        f'style="display:block;width:{width_style};max-width:{max_width_style};'
+        'max-height:70vh;height:auto;object-fit:contain;" />',
+        unsafe_allow_html=True,
+    )
+    if caption is not None:
+        st.caption(caption)
 
 
 def apply_page_chrome() -> None:
@@ -38,4 +133,7 @@ def inject_styles() -> None:
 
 def render_quickstart() -> None:
     st.subheader("How to use")
-    st.image(str(_QUICKSTART_GIF), caption="Quick walkthrough of initial setup.", width="stretch")
+    render_quickstart_gif(
+        caption="Quick walkthrough of initial setup.",
+        width="stretch",
+    )

@@ -1,25 +1,28 @@
 """
-``streamlit-drawable-canvas`` registers the background in Streamlit's in-memory
-``/media/...`` store. Fast reruns or iframe timing often produce
-``MediaFileStorageError`` / missing file errors when the browser requests a stale id.
+Optional override for ``streamlit_drawable_canvas.st_canvas``.
 
-We pass the background as an inline **JPEG** data URL (compressed) so the canvas
-never uses the media file manager for that image.
+The stock widget passes a ``/media/...`` PNG URL as ``backgroundImageURL``. The
+iframe script resolves it as ``streamlitOrigin + backgroundImageURL``, which is
+correct for path-style URLs.
 
-Set ``GRADING_DRAWABLE_CANVAS_DATA_URL=0`` (or ``false`` / ``off``) to restore the
-package's stock ``image_to_url`` behavior.
+An experimental **data URL** path exists (``png_data_url_for_drawable_canvas``) for
+people who wanted to avoid ``/media/`` races. On Streamlit 1.50+ the same script
+still does ``origin + backgroundImageURL``, which turns ``data:image/...`` into an
+invalid URL and yields a **blank canvas**, so data URLs are **off by default**.
+
+Set ``GRADING_DRAWABLE_CANVAS_DATA_URL=1`` (or ``true`` / ``on``) to opt into the
+experimental data URL path (not recommended on current Streamlit + drawable-canvas).
 """
 
 from __future__ import annotations
 
-import base64
-import io
 import os
 from typing import Any, Optional
 
 import numpy as np
-from PIL import Image as PILImage
 import streamlit_drawable_canvas as drawable_module
+
+from pages.streamlit_canvas_image import png_data_url_for_drawable_canvas
 
 _original_st_canvas = drawable_module.st_canvas
 _component_func = drawable_module._component_func
@@ -27,43 +30,10 @@ _resize_img = drawable_module._resize_img
 _data_url_to_image = drawable_module._data_url_to_image
 CanvasResult = drawable_module.CanvasResult
 
-try:
-    _LANCZOS = PILImage.Resampling.LANCZOS
-except AttributeError:
-    _LANCZOS = PILImage.LANCZOS
-
-_JPEG_QUALITY = 88
-_MAX_BACKGROUND_BYTES = 1_800_000
-
 
 def prefer_data_url_background() -> bool:
     raw = os.environ.get("GRADING_DRAWABLE_CANVAS_DATA_URL", "").strip().lower()
-    return raw not in ("0", "false", "no", "off")
-
-
-def _encode_canvas_background_jpeg_data_url(resized_image: Any) -> str:
-    rgb = resized_image.convert("RGB") if resized_image.mode != "RGB" else resized_image
-    quality = _JPEG_QUALITY
-
-    def encode(current_rgb: PILImage.Image, current_quality: int) -> bytes:
-        buffer = io.BytesIO()
-        current_rgb.save(buffer, format="JPEG", quality=current_quality, optimize=True)
-        return buffer.getvalue()
-
-    data = encode(rgb, quality)
-    while len(data) > _MAX_BACKGROUND_BYTES and quality > 45:
-        quality -= 8
-        data = encode(rgb, quality)
-
-    scale = 0.88
-    while len(data) > _MAX_BACKGROUND_BYTES and rgb.width > 400 and rgb.height > 300:
-        new_width = max(1, int(rgb.width * scale))
-        new_height = max(1, int(rgb.height * scale))
-        rgb = rgb.resize((new_width, new_height), _LANCZOS)
-        data = encode(rgb, quality)
-
-    encoded = base64.b64encode(data).decode("ascii")
-    return f"data:image/jpeg;base64,{encoded}"
+    return raw in ("1", "true", "yes", "on")
 
 
 def _st_canvas_data_url_background(
@@ -84,8 +54,7 @@ def _st_canvas_data_url_background(
     background_image_url = None
     if background_image is not None:
         resized = _resize_img(background_image, height, width)
-        background_image_url = _encode_canvas_background_jpeg_data_url(resized)
-        background_color = ""
+        background_image_url = png_data_url_for_drawable_canvas(resized)
 
     initial_drawing = {"version": "4.4.0"} if initial_drawing is None else initial_drawing
     initial_drawing["background"] = background_color
