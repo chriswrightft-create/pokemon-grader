@@ -1,4 +1,8 @@
+from pathlib import Path
+
 import streamlit as st
+
+_QUICKSTART_GIF = Path(__file__).resolve().parent / "assets" / "quickstart.gif"
 
 
 def apply_page_chrome() -> None:
@@ -34,4 +38,4 @@ def inject_styles() -> None:
 
 def render_quickstart() -> None:
     st.subheader("How to use")
-    st.image("assets/quickstart.gif", caption="Quick walkthrough of initial setup.", width="stretch")
+    st.image(str(_QUICKSTART_GIF), caption="Quick walkthrough of initial setup.", width="stretch")

@@ -8,7 +8,6 @@ import cv2
 import numpy as np
 import streamlit as st
 from PIL import Image
-from streamlit_drawable_canvas import st_canvas
 
 # Streamlit Cloud can run this page as entrypoint, so ensure repo root is importable.
 ROOT_DIR = Path(__file__).resolve().parent
@@ -17,6 +16,7 @@ if str(ROOT_DIR) not in sys.path:
 
 from border_measurement import calculate_ratios_from_bounds
 import app_ui
+from pages.drawable_canvas_fix import install_drawable_canvas_data_url_background
 from pages.streamlit_canvas_image import pil_background_for_drawable_canvas
 from pages import line_mark_line_stage as line_stage_ui
 from pages import line_mark_page_helpers as page_helpers
@@ -26,6 +26,10 @@ from pages import line_mark_utils as line_utils
 from pages.line_mark_warp import get_cached_warped_card
 
 line_utils.apply_streamlit_canvas_compatibility()
+install_drawable_canvas_data_url_background()
+from streamlit_drawable_canvas import st_canvas
+
+QUICKSTART_GIF_PATH = ROOT_DIR / "assets" / "quickstart.gif"
 
 initialize_line_mark_defaults = line_mark_state.initialize_line_mark_defaults
 persistent_float_input = line_mark_state.persistent_float_input
@@ -136,7 +140,7 @@ if locked_points is None:
                     clear_all_marked_points()
             st.info("Keep clicking in order: top(3), right(3), bottom(3), left(3).")
             st.caption("Quickstart")
-            st.image("assets/quickstart.gif", width="stretch")
+            st.image(str(QUICKSTART_GIF_PATH), width="stretch")
             st.stop()
         row_cols = st.columns(2, gap="small")
         with row_cols[0]:
@@ -149,7 +153,7 @@ if locked_points is None:
                 st.session_state["line_mark_stage"] = "lines"
                 st.rerun()
         st.caption("Quickstart")
-        st.image("assets/quickstart.gif", width="stretch")
+        st.image(str(QUICKSTART_GIF_PATH), width="stretch")
         st.stop()
 
 points = list(locked_points)
