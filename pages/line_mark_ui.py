@@ -16,49 +16,32 @@ from pages.line_mark_constants import (
 
 
 def apply_streamlit_canvas_compatibility() -> None:
-    """Patch Streamlit's image_to_url to handle different versions and ensure canvas compatibility."""
+    """Patch Streamlit's image_to_url to handle drawable-canvas compatibility."""
     try:
         from streamlit.elements.lib import image_utils
+        from streamlit.elements.lib.layout_utils import LayoutConfig
         
-        # Store the original function
-        original_image_to_url = image_utils.image_to_url
+        # Store reference to the ACTUAL original function before any patching
+        _original_image_to_url = image_utils.image_to_url
         
-        def _image_to_url_safe_wrapper(image, *args, **kwargs):
-            """Wrapper that handles various function signatures across Streamlit versions."""
-            try:
-                # Try to call with all arguments first
-                return original_image_to_url(image, *args, **kwargs)
-            except TypeError:
-                # If that fails, try the legacy signature
-                try:
-                    from streamlit.elements.lib.layout_utils import LayoutConfig
-                    # Try to find layout_config parameter
-                    if args and hasattr(args[0], 'width'):
-                        layout_config = args[0]
-                    elif isinstance(args[0], int):
-                        layout_config = LayoutConfig(width=args[0])
-                    else:
-                        layout_config = LayoutConfig(width=None)
-                    # Call with LayoutConfig as second positional argument
-                    return original_image_to_url(image, layout_config, *(args[1:]), **kwargs)
-                except Exception:
-                    # Final fallback: return the image as-is or a data URI
-                    try:
-                        import io
-                        import base64
-                        from PIL import Image as PILImage
-                        if isinstance(image, PILImage.Image):
-                            buffer = io.BytesIO()
-                            image.save(buffer, format="PNG")
-                            return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode()}"
-                    except Exception:
-                        pass
-                    return None
+        def _image_to_url_wrapper(image, width_or_config, *args, **kwargs):
+            """Convert width int to LayoutConfig for st_canvas compatibility."""
+            # If width_or_config is already a LayoutConfig, pass through
+            if hasattr(width_or_config, 'width'):
+                return _original_image_to_url(image, width_or_config, *args, **kwargs)
+            
+            # If it's an int (from st_canvas calling with old signature), convert to LayoutConfig
+            if isinstance(width_or_config, int):
+                layout_config = LayoutConfig(width=width_or_config)
+                return _original_image_to_url(image, layout_config, *args, **kwargs)
+            
+            # Otherwise pass through as-is
+            return _original_image_to_url(image, width_or_config, *args, **kwargs)
         
-        # Apply the patch
-        image_utils.image_to_url = _image_to_url_safe_wrapper
-        streamlit_image.image_to_url = _image_to_url_safe_wrapper
-    except (ImportError, AttributeError, Exception) as e:
+        # Apply the patch - replace the function with our wrapper
+        image_utils.image_to_url = _image_to_url_wrapper
+        streamlit_image.image_to_url = _image_to_url_wrapper
+    except Exception:
         # Silently fail if we can't apply the patch
         return
 
