@@ -81,8 +81,6 @@ def fit_size(width: int, height: int, max_width: int = 900, max_height: int = 70
     return fitted_width, fitted_height, scale
 
 
-
-
 def force_canvas_crosshair(
     source_image_url: str = "",
     zoom_factor: int = 4,
